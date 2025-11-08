@@ -156,6 +156,37 @@ class StockAnalysisDatabase:
         conn.close()
         
         return count
+    
+    def get_latest_analysis(self):
+        """获取最新的分析记录"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM analysis_records 
+            ORDER BY created_at DESC 
+            LIMIT 1
+        ''')
+        
+        record = cursor.fetchone()
+        conn.close()
+        
+        if not record:
+            return None
+        
+        # 解析JSON数据
+        return {
+            'id': record[0],
+            'symbol': record[1],
+            'stock_name': record[2],
+            'analysis_date': record[3],
+            'period': record[4],
+            'stock_info': json.loads(record[5]) if record[5] else {},
+            'agents_results': json.loads(record[6]) if record[6] else {},
+            'discussion_result': json.loads(record[7]) if record[7] else {},
+            'final_decision': json.loads(record[8]) if record[8] else {},
+            'created_at': record[9]
+        }
 
 # 全局数据库实例
 db = StockAnalysisDatabase()

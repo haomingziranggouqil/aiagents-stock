@@ -25,7 +25,7 @@ from smart_monitor_ui import smart_monitor_ui
 
 # 页面配置
 st.set_page_config(
-    page_title="复合多AI智能体股票团队分析系统",
+    page_title="天心多AI智能体股票分析系统",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -276,12 +276,39 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+def load_latest_analysis_from_db():
+    """从数据库加载最新的分析记录"""
+    try:
+        # 检查是否已经有分析结果在session_state中
+        if 'analysis_completed' in st.session_state and st.session_state.analysis_completed:
+            return False
+            
+        # 尝试从数据库获取最新的分析记录
+        latest_record = db.get_latest_analysis()
+        if latest_record:
+            # 将记录加载到session_state
+            st.session_state.analysis_completed = True
+            st.session_state.stock_info = latest_record.get('stock_info', {})
+            st.session_state.agents_results = latest_record.get('agents_results', {})
+            st.session_state.discussion_result = latest_record.get('discussion_result', {})
+            st.session_state.final_decision = latest_record.get('final_decision', {})
+            st.session_state.just_completed = False  # 不是刚刚完成的，用于控制显示
+            return True
+    except Exception as e:
+        # 静默失败，不影响用户体验
+        print(f"加载最新分析记录失败: {e}")
+    return False
+
 def main():
+    # 尝试从数据库加载最新的分析记录（如果session中没有）
+    if load_latest_analysis_from_db():
+        st.success("✅ 已从历史记录恢复最近的分析结果")
+    
     # 顶部标题栏
     st.markdown("""
     <div class="top-nav">
-        <h1 class="nav-title">📈 复合多AI智能体股票团队分析系统</h1>
-        <p class="nav-subtitle">基于DeepSeek的专业量化投资分析平台 | Multi-Agent Stock Analysis System</p>
+        <h1 class="nav-title">📈 天心多智能体股票分析系统</h1>
+        <p class="nav-subtitle">基于多智能体的专业量化投资分析平台 | Tianxin Multi-Agent Stock Analysis System</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -301,7 +328,7 @@ def main():
         st.markdown("---")
 
         # 🎯 选股板块
-        with st.expander("🎯 选股板块", expanded=True):
+        with st.expander("🎯 选股板块", expanded=False):
             st.markdown("**根据不同策略筛选优质股票**")
 
             if st.button("💰 主力选股", width='stretch', key="nav_main_force", help="基于主力资金流向的选股策略"):
@@ -312,7 +339,7 @@ def main():
                         del st.session_state[key]
 
         # 📊 策略分析
-        with st.expander("📊 策略分析", expanded=True):
+        with st.expander("📊 策略分析", expanded=False):
             st.markdown("**AI驱动的板块和龙虎榜策略**")
 
             if st.button("🎯 智策板块", width='stretch', key="nav_sector_strategy", help="AI板块策略分析"):
@@ -330,7 +357,7 @@ def main():
                         del st.session_state[key]
 
         # 💼 投资管理
-        with st.expander("💼 投资管理", expanded=True):
+        with st.expander("💼 投资管理", expanded=False):
             st.markdown("**持仓跟踪与实时监测**")
 
             if st.button("📊 持仓分析", width='stretch', key="nav_portfolio", help="投资组合分析与定时跟踪"):
@@ -1605,7 +1632,7 @@ def show_example_interface():
         - NVDA (英伟达)
         """)
 
-    st.info("💡 提示：首次运行需要配置DeepSeek API Key，请在.env中设置DEEPSEEK_API_KEY")
+    st.info("💡 提示：首次运行需要配置 API Key，请在.env中设置")
 
     st.markdown("---")
     st.markdown("""
