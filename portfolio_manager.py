@@ -16,12 +16,12 @@ from portfolio_db import portfolio_db
 class PortfolioManager:
     """持仓管理器类"""
     
-    def __init__(self, model="deepseek-chat"):
+    def __init__(self, model="qwen3-max"):
         """
         初始化持仓管理器
         
         Args:
-            model: AI模型（deepseek-chat 或 deepseek-reasoner）
+            model: AI模型（默认 qwen3-max）
         """
         self.model = model
         self.db = portfolio_db
