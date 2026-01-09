@@ -213,7 +213,7 @@ class StockDataFetcher:
                                 info['pe_ratio'] = pe_val
                 except Exception as e:
                     print(f"获取市盈率失败: {e}")
-            
+
             if info['pb_ratio'] == 'N/A':
                 try:
                     pb_data = ak.stock_zh_valuation_baidu(symbol=symbol, indicator="市净率")
@@ -225,7 +225,7 @@ class StockDataFetcher:
                                 info['pb_ratio'] = pb_val
                 except Exception as e:
                     print(f"获取市净率失败: {e}")
-            
+
             return info
             
         except Exception as e:

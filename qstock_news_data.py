@@ -130,39 +130,58 @@ class QStockNewsDataFetcher:
             # 方法2: 如果没有获取到，尝试获取新浪财经新闻
             if not news_items:
                 try:
-                    # stock_zh_a_spot_em() - 获取股票信息，包含代码和名称
-                    df_info = ak.stock_zh_a_spot_em()
-                    
-                    # 查找股票名称
                     stock_name = None
-                    if df_info is not None and not df_info.empty:
-                        match = df_info[df_info['代码'] == symbol]
-                        if not match.empty:
-                            stock_name = match.iloc[0]['名称']
-                            print(f"   找到股票名称: {stock_name}")
-                    
+
+                    # 优先使用个股信息接口获取名称 (比拉取全量列表更稳定快)
+                    try:
+                        if hasattr(ak, 'stock_individual_info_em'):
+                            df_info = ak.stock_individual_info_em(symbol=symbol)
+                            if df_info is not None and not df_info.empty:
+                                # 查找"股票简称"行
+                                name_row = df_info[df_info['item'] == '股票简称']
+                                if not name_row.empty:
+                                    stock_name = name_row.iloc[0]['value']
+                                    print(f"   找到股票名称: {stock_name}")
+                    except Exception as e:
+                        print(f"   个股信息查询失败，尝试全量列表: {e}")
+
+                    # 如果上面的方法失败，尝试旧方法
+                    if not stock_name:
+                        # stock_zh_a_spot_em() - 获取股票信息，包含代码和名称
+                        df_info = ak.stock_zh_a_spot_em()
+
+                        # 查找股票名称
+                        if df_info is not None and not df_info.empty:
+                            match = df_info[df_info['代码'] == symbol]
+                            if not match.empty:
+                                stock_name = match.iloc[0]['名称']
+                                print(f"   找到股票名称(全量表): {stock_name}")
+
                     # 使用股票名称搜索新闻
                     if stock_name:
                         # stock_news_sina - 新浪财经新闻
                         try:
-                            df = ak.stock_news_sina(symbol=stock_name)
-                            if df is not None and not df.empty:
-                                print(f"   ✓ 从新浪财经获取到 {len(df)} 条新闻")
-                                
-                                for idx, row in df.head(self.max_items).iterrows():
-                                    item = {'source': '新浪财经'}
-                                    
-                                    for col in df.columns:
-                                        value = row.get(col)
-                                        if value is None or (isinstance(value, float) and pd.isna(value)):
-                                            continue
-                                        try:
-                                            item[col] = str(value)
-                                        except:
-                                            item[col] = "无法解析"
-                                    
-                                    if len(item) > 1:
-                                        news_items.append(item)
+                            if hasattr(ak, 'stock_news_sina'):
+                                df = ak.stock_news_sina(symbol=stock_name)
+                                if df is not None and not df.empty:
+                                    print(f"   ✓ 从新浪财经获取到 {len(df)} 条新闻")
+
+                                    for idx, row in df.head(self.max_items).iterrows():
+                                        item = {'source': '新浪财经'}
+
+                                        for col in df.columns:
+                                            value = row.get(col)
+                                            if value is None or (isinstance(value, float) and pd.isna(value)):
+                                                continue
+                                            try:
+                                                item[col] = str(value)
+                                            except:
+                                                item[col] = "无法解析"
+
+                                        if len(item) > 1:
+                                            news_items.append(item)
+                            else:
+                                print(f"   ⚠️ akshare 缺少 stock_news_sina 方法")
                         except:
                             pass
                 
@@ -173,36 +192,68 @@ class QStockNewsDataFetcher:
             if not news_items or len(news_items) < 5:
                 try:
                     # stock_news_cls() - 财联社电报
-                    df = ak.stock_news_cls()
-                    
-                    if df is not None and not df.empty:
-                        # 筛选包含股票代码或名称的新闻
-                        df_filtered = df[
-                            df['内容'].str.contains(symbol, na=False) |
-                            df['标题'].str.contains(symbol, na=False)
-                        ]
-                        
-                        if not df_filtered.empty:
-                            print(f"   ✓ 从财联社获取到 {len(df_filtered)} 条相关新闻")
-                            
-                            for idx, row in df_filtered.head(self.max_items - len(news_items)).iterrows():
-                                item = {'source': '财联社'}
-                                
-                                for col in df_filtered.columns:
-                                    value = row.get(col)
-                                    if value is None or (isinstance(value, float) and pd.isna(value)):
-                                        continue
-                                    try:
-                                        item[col] = str(value)
-                                    except:
-                                        item[col] = "无法解析"
-                                
-                                if len(item) > 1:
-                                    news_items.append(item)
-                
+                    if hasattr(ak, 'stock_news_cls'):
+                        df = ak.stock_news_cls()
+
+                        if df is not None and not df.empty:
+                            # 筛选包含股票代码或名称的新闻
+                            df_filtered = df[
+                                df['内容'].str.contains(symbol, na=False) |
+                                df['标题'].str.contains(symbol, na=False)
+                            ]
+
+                            if not df_filtered.empty:
+                                print(f"   ✓ 从财联社获取到 {len(df_filtered)} 条相关新闻")
+
+                                for idx, row in df_filtered.head(self.max_items - len(news_items)).iterrows():
+                                    item = {'source': '财联社'}
+
+                                    for col in df_filtered.columns:
+                                        value = row.get(col)
+                                        if value is None or (isinstance(value, float) and pd.isna(value)):
+                                            continue
+                                        try:
+                                            item[col] = str(value)
+                                        except:
+                                            item[col] = "无法解析"
+
+                                    if len(item) > 1:
+                                        news_items.append(item)
+                    else:
+                        print(f"   ⚠️ akshare 缺少 stock_news_cls 方法")
+
                 except Exception as e:
                     print(f"   ⚠ 从财联社获取失败: {e}")
-            
+
+            # 方法4: 兜底方案 - 使用 pywencai (问财)
+            if not news_items:
+                try:
+                    print("   ⚠️ akshare 获取新闻失败，尝试切换到问财数据源...")
+                    # 延迟导入以避免循环依赖
+                    from news_announcement_data import NewsAnnouncementDataFetcher
+                    wencai_fetcher = NewsAnnouncementDataFetcher()
+                    # 临时修改max_items以匹配
+                    original_max = wencai_fetcher.max_items
+                    wencai_fetcher.max_items = self.max_items
+
+                    # 获取数据
+                    wencai_result = wencai_fetcher.get_news_and_announcements(symbol)
+
+                    if wencai_result and wencai_result.get('news_data'):
+                        news_data = wencai_result['news_data']
+                        items = news_data.get('items', [])
+
+                        if items:
+                            print(f"   ✓ 从问财获取到 {len(items)} 条新闻")
+                            for item in items:
+                                if 'source' not in item:
+                                    item['source'] = '问财'
+                                news_items.append(item)
+                except ImportError:
+                    print("   ⚠️ 未找到 news_announcement_data 模块，无法使用问财兜底")
+                except Exception as e:
+                    print(f"   ⚠️ 问财数据源获取失败: {e}")
+
             if not news_items:
                 print(f"   未找到股票 {symbol} 的新闻")
                 return None

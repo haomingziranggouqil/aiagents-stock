@@ -19,6 +19,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 import io
 import tempfile
 import os
+import html
 
 def register_chinese_fonts():
     """注册中文字体 - 支持Windows和Linux系统"""
@@ -134,15 +135,15 @@ def create_pdf_report(stock_info, agents_results, discussion_result, final_decis
     # 创建股票信息表格
     stock_data = [
         ['项目', '值'],
-        ['股票代码', stock_info.get('symbol', 'N/A')],
-        ['股票名称', stock_info.get('name', 'N/A')],
+        ['股票代码', str(stock_info.get('symbol', 'N/A'))],
+        ['股票名称', str(stock_info.get('name', 'N/A'))],
         ['当前价格', str(stock_info.get('current_price', 'N/A'))],
         ['涨跌幅', f"{stock_info.get('change_percent', 'N/A')}%"],
         ['市盈率(PE)', str(stock_info.get('pe_ratio', 'N/A'))],
         ['市净率(PB)', str(stock_info.get('pb_ratio', 'N/A'))],
         ['市值', str(stock_info.get('market_cap', 'N/A'))],
-        ['市场', stock_info.get('market', 'N/A')],
-        ['交易所', stock_info.get('exchange', 'N/A')]
+        ['市场', str(stock_info.get('market', 'N/A'))],
+        ['交易所', str(stock_info.get('exchange', 'N/A'))]
     ]
     
     stock_table = Table(stock_data, colWidths=[2*inch, 3*inch])
@@ -184,13 +185,16 @@ def create_pdf_report(stock_info, agents_results, discussion_result, final_decis
                 analysis_text = str(agent_result)
             
             # 处理长文本，确保在PDF中正确显示
-            analysis_text = analysis_text.replace('\n', '<br/>')
+            # 先转义HTML特殊字符，防止Paragraph解析出错，再将换行符转换为<br/>
+            analysis_text = html.escape(analysis_text).replace('\n', '<br/>')
             story.append(Paragraph(analysis_text, normal_style))
             story.append(Spacer(1, 12))
     
     # 团队讨论
     story.append(Paragraph("团队综合讨论", heading_style))
-    discussion_text = str(discussion_result).replace('\n', '<br/>')
+    discussion_text = str(discussion_result)
+    # 先转义HTML特殊字符，防止Paragraph解析出错
+    discussion_text = html.escape(discussion_text).replace('\n', '<br/>')
     story.append(Paragraph(discussion_text, normal_style))
     story.append(Spacer(1, 20))
     
@@ -201,16 +205,16 @@ def create_pdf_report(stock_info, agents_results, discussion_result, final_decis
         # JSON格式的决策
         decision_data = [
             ['项目', '内容'],
-            ['投资评级', final_decision.get('rating', '未知')],
+            ['投资评级', str(final_decision.get('rating', '未知'))],
             ['目标价位', str(final_decision.get('target_price', 'N/A'))],
-            ['操作建议', final_decision.get('operation_advice', '暂无建议')],
-            ['进场区间', final_decision.get('entry_range', 'N/A')],
+            ['操作建议', str(final_decision.get('operation_advice', '暂无建议'))],
+            ['进场区间', str(final_decision.get('entry_range', 'N/A'))],
             ['止盈位', str(final_decision.get('take_profit', 'N/A'))],
             ['止损位', str(final_decision.get('stop_loss', 'N/A'))],
-            ['持有周期', final_decision.get('holding_period', 'N/A')],
-            ['仓位建议', final_decision.get('position_size', 'N/A')],
+            ['持有周期', str(final_decision.get('holding_period', 'N/A'))],
+            ['仓位建议', str(final_decision.get('position_size', 'N/A'))],
             ['信心度', f"{final_decision.get('confidence_level', 'N/A')}/10"],
-            ['风险提示', final_decision.get('risk_warning', '无')]
+            ['风险提示', str(final_decision.get('risk_warning', '无'))]
         ]
         
         decision_table = Table(decision_data, colWidths=[1.5*inch, 3.5*inch])
@@ -231,7 +235,7 @@ def create_pdf_report(stock_info, agents_results, discussion_result, final_decis
     else:
         # 文本格式的决策
         decision_text = final_decision.get('decision_text', str(final_decision))
-        decision_text = decision_text.replace('\n', '<br/>')
+        decision_text = html.escape(decision_text).replace('\n', '<br/>')
         story.append(Paragraph(decision_text, normal_style))
     
     story.append(Spacer(1, 20))
