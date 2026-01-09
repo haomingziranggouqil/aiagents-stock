@@ -42,6 +42,7 @@ def model_selector():
     selected_model = st.sidebar.selectbox(
         "选择AI模型",
         options=list(model_options.keys()),
+        index=list(model_options.keys()).index("qwen3-max"),
         format_func=lambda x: model_options[x],
         help="DeepSeek Reasoner提供更强的推理能力，但响应时间可能更长"
     )
