@@ -13,6 +13,7 @@ import os
 import asyncio
 from markdown_it import MarkdownIt
 import yaml
+from pdf_browser_launcher import get_browser_launch_options
 
 # 条件导入streamlit，只在需要时导入
 try:
@@ -166,20 +167,9 @@ async def markdown_to_pdf_browser(markdown_content, output_path):
     
     try:
         # 启动浏览器，禁用信号处理以避免主线程限制
-        browser = await launch(
-            headless=True,
-            handleSIGINT=False,
-            handleSIGTERM=False,
-            handleSIGHUP=False,
-            args=[
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--window-size=1920,1080'
-            ]
-        )
-        
+        launch_kwargs = get_browser_launch_options()
+        browser = await launch(**launch_kwargs)
+
         # 创建新页面
         page = await browser.newPage()
         

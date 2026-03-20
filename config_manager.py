@@ -123,6 +123,19 @@ class ConfigManager:
                 "required": False,
                 "type": "text"
             },
+            "PDF_BROWSER": {
+                "value": "auto",
+                "description": "PDF生成使用的浏览器（auto/edge/custom）",
+                "required": False,
+                "type": "select",
+                "options": ["auto", "edge", "custom"]
+            },
+            "PDF_BROWSER_PATH": {
+                "value": "",
+                "description": "自定义浏览器可执行文件路径（Edge/Chrome均可）",
+                "required": False,
+                "type": "text"
+            },
         }
     
     def read_env(self) -> Dict[str, str]:
@@ -214,7 +227,13 @@ class ConfigManager:
             lines.append(f'WEBHOOK_TYPE="{config.get("WEBHOOK_TYPE", "dingtalk")}"')
             lines.append(f'WEBHOOK_URL="{config.get("WEBHOOK_URL", "")}"')
             lines.append(f'WEBHOOK_KEYWORD="{config.get("WEBHOOK_KEYWORD", "aiagents通知")}"')
-            
+            lines.append("")
+
+            # PDF浏览器配置
+            lines.append("# ========== PDF浏览器配置（可选）==========")
+            lines.append(f'PDF_BROWSER="{config.get("PDF_BROWSER", "auto")}"')
+            lines.append(f'PDF_BROWSER_PATH="{config.get("PDF_BROWSER_PATH", "")}"')
+
             with open(self.env_file, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(lines))
             

@@ -1456,7 +1456,7 @@ def display_stock_chart(stock_data, stock_info):
 
     # 生成唯一的key
     chart_key = f"main_stock_chart_{stock_info.get('symbol', 'unknown')}_{int(time.time())}"
-    st.plotly_chart(fig, use_container_width=True, config={'responsive': True}, key=chart_key)
+    st.plotly_chart(fig, width='stretch', config={'responsive': True}, key=chart_key)
 
     # 成交量图
     if 'Volume' in stock_data.columns:
@@ -1477,7 +1477,7 @@ def display_stock_chart(stock_data, stock_info):
 
         # 生成唯一的key
         volume_key = f"volume_chart_{stock_info.get('symbol', 'unknown')}_{int(time.time())}"
-        st.plotly_chart(fig_volume, use_container_width=True, config={'responsive': True}, key=volume_key)
+        st.plotly_chart(fig_volume, width='stretch', config={'responsive': True}, key=volume_key)
 
 def display_agents_analysis(agents_results):
     """显示各分析师报告"""
@@ -2694,5 +2694,7 @@ def display_detailed_cards(results, period):
     except Exception as e:
         st.error(f"显示详细信息时出错: {str(e)}")
 
+
 if __name__ == "__main__":
     main()
+

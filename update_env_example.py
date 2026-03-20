@@ -25,6 +25,13 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 TUSHARE_TOKEN=
 
 
+# ========== PDF浏览器配置（可选）==========
+# PDF生成使用的浏览器，可选 auto（默认，使用内置Chromium）/edge/custom
+PDF_BROWSER=auto
+# 自定义浏览器可执行文件路径（可以填写Edge或Chrome的绝对路径）
+PDF_BROWSER_PATH=
+
+
 # ========== MiniQMT量化交易配置（可选）==========
 # 是否启用MiniQMT量化交易接口
 MINIQMT_ENABLED=false
@@ -104,4 +111,3 @@ with open('.env.example', 'w', encoding='utf-8') as f:
 print("[OK] .env.example file updated successfully")
 print("[OK] File encoding: UTF-8")
 print("[OK] All Chinese characters should display correctly")
-

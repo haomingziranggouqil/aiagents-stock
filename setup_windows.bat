@@ -1,4 +1,7 @@
 @echo off
+REM Force UTF-8 to avoid garbled Chinese output in cmd
+chcp 65001 >nul
+setlocal EnableExtensions
 
 REM Windows环境一键启动脚本
 REM 自动创建虚拟环境、安装依赖并启动AI股票分析系统

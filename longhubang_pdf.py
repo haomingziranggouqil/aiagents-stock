@@ -9,6 +9,7 @@ import asyncio
 import io
 from markdown_it import MarkdownIt
 import yaml
+from pdf_browser_launcher import get_browser_launch_options
 
 # 条件导入pyppeteer，添加异常处理
 try:
@@ -362,20 +363,9 @@ class LonghubangPDFGenerator:
         
         try:
             # 启动浏览器，禁用信号处理以避免主线程限制
-            browser = await launch(
-                headless=True,
-                handleSIGINT=False,
-                handleSIGTERM=False,
-                handleSIGHUP=False,
-                args=[
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--window-size=1920,1080'
-                ]
-            )
-            
+            launch_kwargs = get_browser_launch_options()
+            browser = await launch(**launch_kwargs)
+
             # 创建新页面
             page = await browser.newPage()
             
