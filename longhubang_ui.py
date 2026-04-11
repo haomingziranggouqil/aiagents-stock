@@ -453,7 +453,7 @@ def display_scoring_ranking(result):
             title='TOP10 综合评分对比',
             text='综合评分',
             color='综合评分',
-            color_continuous_scale='RdYlGn'
+            color_continuous_scale=['#0ea5e9', '#22d3ee', '#8b5cf6']
         )
         fig1.update_traces(texttemplate='%{text:.1f}分', textposition='outside')
         fig1.update_layout(
@@ -471,7 +471,7 @@ def display_scoring_ranking(result):
             fig2 = go.Figure()
             
             # 为每只股票添加雷达图
-            colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7']
+            colors = ['#22d3ee', '#8b5cf6', '#10b981', '#f59e0b', '#f43f5e']
             for i in range(display_count):
                 stock = top10_df.iloc[i]
                 

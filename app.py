@@ -1,8 +1,12 @@
+"""@File: app.py@Contains: [main, model_selector, render_top_navigation, sync_navigation_state, _normalize_final_decision_payload, run_stock_analysis, run_batch_analysis, display_stock_info, display_stock_chart, display_agents_analysis, display_team_discussion, display_final_decision, show_example_interface, display_history_records, display_config_manager]@Responsibilities:    - 提供股票分析系统主入口与页面路由    - 注入全局前端主题、顶部功能导航与布局样式    - 组织个股分析、批量分析、历史记录与配置管理界面@Non-Responsibilities:    - 不负责底层数据抓取实现    - 不负责AI模型推理细节    - 不负责数据库底层表结构定义@Input: Streamlit用户交互、股票代码、模型选择、分析参数@Output: 渲染主页面、触发分析流程、展示图表与分析结果"""
+
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 import json
+import ast
+import re
 from datetime import datetime
 import time
 import base64
@@ -14,14 +18,18 @@ from stock_data import StockDataFetcher
 from ai_agents import StockAnalysisAgents
 from pdf_generator import display_pdf_export_section
 from database import db
-from monitor_manager import display_monitor_manager, get_monitor_summary
+from monitor_manager import display_monitor_manager
 from monitor_service import monitor_service
-from notification_service import notification_service
 from config_manager import config_manager
 from main_force_ui import display_main_force_selector
 from sector_strategy_ui import display_sector_strategy
 from longhubang_ui import display_longhubang
 from smart_monitor_ui import smart_monitor_ui
+import plotly.io as pio
+
+# 统一Plotly默认深色模板，保证各页面图表风格一致
+pio.templates.default = "plotly_dark"
+px.defaults.template = "plotly_dark"
 
 # 页面配置
 st.set_page_config(
@@ -48,230 +56,896 @@ def model_selector():
 
     return selected_model
 
-# 自定义CSS样式 - 专业版
+
+def clear_session_keys(*keys):
+    """清理 session_state 中指定的键"""
+    for key in keys:
+        if key in st.session_state:
+            del st.session_state[key]
+
+
+FEATURE_VIEW_KEYS = [
+    'show_history', 'show_monitor', 'show_config', 'show_main_force',
+    'show_sector_strategy', 'show_longhubang', 'show_portfolio', 'show_smart_monitor'
+]
+
+TOP_NAV_ITEMS = [
+    ('show_home', '🧠 智能分析', '返回首页进行单个或批量股票分析'),
+    ('show_main_force', '💰 主力选股', '基于主力资金流向的选股策略'),
+    ('show_sector_strategy', '🎯 智策板块', 'AI驱动的板块轮动与热度分析'),
+    ('show_longhubang', '🐉 智瞰龙虎', '龙虎榜深度分析与推荐'),
+    ('show_portfolio', '📊 持仓分析', '投资组合分析与定时跟踪'),
+    ('show_smart_monitor', '🤖 AI盯盘', 'DeepSeek AI自动盯盘决策交易'),
+    ('show_monitor', '📡 实时监测', '价格监控与预警提醒'),
+    ('show_history', '📚 历史记录', '查看历史分析记录'),
+    ('show_config', '⚙️ 环境配置', '系统设置与API配置'),
+]
+
+
+def _set_query_view(view_key):
+    """同步导航状态到URL参数，便于刷新后保留当前页面。"""
+    try:
+        st.query_params['view'] = view_key
+    except Exception:
+        st.experimental_set_query_params(view=view_key)
+
+
+def _get_query_view():
+    """从URL参数中读取导航状态。"""
+    try:
+        query_view = st.query_params.get('view', 'show_home')
+    except Exception:
+        query_view = st.experimental_get_query_params().get('view', ['show_home'])
+
+    if isinstance(query_view, list):
+        return query_view[0] if query_view else 'show_home'
+    return query_view or 'show_home'
+
+
+def apply_active_view(active_key, sync_query=False):
+    """应用当前功能视图，并同步清理其他页面状态。"""
+    for key in FEATURE_VIEW_KEYS:
+        if key in st.session_state:
+            del st.session_state[key]
+
+    if active_key != 'show_home':
+        st.session_state[active_key] = True
+
+    st.session_state.active_view = active_key
+
+    if sync_query:
+        _set_query_view(active_key)
+
+
+def clear_all_feature_views():
+    """清理所有功能页状态，回到首页智能分析视图"""
+    apply_active_view('show_home', sync_query=True)
+
+
+def switch_view(active_key, clear_keys):
+    """切换到指定功能页并清理其他页状态"""
+    _ = clear_keys  # 保留参数以兼容旧调用
+    apply_active_view(active_key, sync_query=True)
+
+
+def render_top_navigation():
+    """渲染顶部功能导航"""
+
+    if 'active_view' not in st.session_state:
+        st.session_state.active_view = 'show_home'
+
+    st.markdown("<div class='section-title'>🧭 顶部功能导航</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-hint'>模块入口统一上移，支持快速切换智能分析、板块、龙虎榜与监测功能。</div>", unsafe_allow_html=True)
+
+    nav_links = []
+    for key, label, tooltip in TOP_NAV_ITEMS:
+        state_class = "feature-tab-active" if st.session_state.active_view == key else "feature-tab-inactive"
+        nav_links.append(
+            f'<a class="feature-tab {state_class}" href="?view={key}" title="{tooltip}">{label}</a>'
+        )
+
+    st.markdown(
+        f"""
+        <div class="feature-nav-shell">
+            <div class="feature-nav-track">
+                {''.join(nav_links)}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+
+
+def sync_navigation_state():
+    """同步URL参数与session_state中的页面状态。"""
+    # 优先读取已存在的页面状态（例如其他流程中设置了show_monitor）
+    session_active = next((k for k in FEATURE_VIEW_KEYS if st.session_state.get(k)), None)
+
+    if session_active:
+        apply_active_view(session_active, sync_query=True)
+        return
+
+    query_view = _get_query_view()
+    valid_views = {key for key, _, _ in TOP_NAV_ITEMS}
+    if query_view not in valid_views:
+        query_view = 'show_home'
+
+    apply_active_view(query_view, sync_query=False)
+
+
+def _normalize_final_decision_payload(final_decision):
+    """将最终决策归一化为可渲染结构，兼容JSON字符串与decision_text嵌套JSON。"""
+
+    def _looks_like_container(text):
+        return bool(text) and ((text.startswith("{") and text.endswith("}")) or (text.startswith("[") and text.endswith("]")))
+
+    def _extract_balanced_json_candidates(text):
+        """从混合文本中提取可能的JSON片段（按出现顺序）。"""
+        candidates = []
+        stack = []
+        start = None
+        for idx, ch in enumerate(text):
+            if ch in "[{":
+                if not stack:
+                    start = idx
+                stack.append(ch)
+            elif ch in "]}":
+                if not stack:
+                    continue
+                top = stack[-1]
+                if (top == "{" and ch == "}") or (top == "[" and ch == "]"):
+                    stack.pop()
+                    if not stack and start is not None:
+                        candidates.append(text[start:idx + 1])
+                        start = None
+                else:
+                    stack.clear()
+                    start = None
+        return candidates
+
+    def _try_parse_json_text(value):
+        if not isinstance(value, str):
+            return None
+        raw = value.strip()
+        if not raw:
+            return None
+
+        parse_candidates = []
+
+        # 优先解析 markdown 代码块中的 json 内容
+        fenced_blocks = re.findall(r"```(?:json)?\s*([\s\S]*?)```", raw, flags=re.IGNORECASE)
+        for block in fenced_blocks:
+            block_text = block.strip()
+            if _looks_like_container(block_text):
+                parse_candidates.append(block_text)
+
+        # 其次解析原始文本或其平衡括号片段
+        if _looks_like_container(raw):
+            parse_candidates.append(raw)
+        parse_candidates.extend(_extract_balanced_json_candidates(raw))
+
+        # 去重保持顺序
+        seen = set()
+        uniq_candidates = []
+        for item in parse_candidates:
+            if item and item not in seen:
+                seen.add(item)
+                uniq_candidates.append(item)
+
+        for candidate in uniq_candidates:
+            # 1) 标准JSON
+            try:
+                return json.loads(candidate)
+            except Exception:
+                pass
+
+            # 2) Python字典/列表风格（单引号/True/False/None）
+            try:
+                literal_obj = ast.literal_eval(candidate)
+                if isinstance(literal_obj, (dict, list)):
+                    return literal_obj
+            except Exception:
+                pass
+
+        return None
+
+    payload = final_decision
+
+    # 兼容双层字符串JSON，最多尝试两次展开
+    for _ in range(2):
+        parsed = _try_parse_json_text(payload)
+        if parsed is None:
+            break
+        payload = parsed
+
+    if isinstance(payload, dict):
+        decision_text = payload.get("decision_text")
+        parsed_decision_text = _try_parse_json_text(decision_text)
+        if isinstance(parsed_decision_text, dict):
+            merged = parsed_decision_text.copy()
+            for key, value in payload.items():
+                if key != "decision_text":
+                    merged.setdefault(key, value)
+            return merged
+        return payload
+
+    return payload
+
+
+def display_dashboard_banner(api_key_status, selected_model, period):
+    """显示首页仪表盘横幅与状态摘要"""
+    selected_model_label = model_options.get(selected_model, selected_model)
+
+    try:
+        from monitor_db import monitor_db
+        monitored_count = len(monitor_db.get_monitored_stocks())
+        pending_count = len(monitor_db.get_pending_notifications())
+        record_count = db.get_record_count()
+    except Exception:
+        monitored_count = 0
+        pending_count = 0
+        record_count = 0
+
+    api_state = "在线" if api_key_status else "未配置"
+    monitor_state = "运行中" if monitor_service.running else "已停止"
+
+    st.markdown(
+        f"""
+        <div class="dashboard-banner">
+            <div class="banner-grid">
+                <div>
+                    <div class="banner-title">🛰️ 天心多AI智能体股票分析控制台</div>
+                    <div class="banner-subtitle">深色科技仪表盘 · 多智能体协同分析 · 统一监测与决策</div>
+                </div>
+                <div class="chip-row">
+                    <div class="tech-chip">🤖 {selected_model_label}</div>
+                    <div class="tech-chip">🔐 API {api_state}</div>
+                    <div class="tech-chip">📡 监测 {monitor_state}</div>
+                    <div class="tech-chip">📚 记录 {record_count} 条</div>
+                    <div class="tech-chip">🪐 周期 {period}</div>
+                </div>
+            </div>
+            <div class="status-bar">
+                <span class="status-pill">已监测股票 {monitored_count} 只</span>
+                <span class="status-pill">待处理通知 {pending_count} 条</span>
+                <span class="status-pill">主界面 / 板块 / 龙虎榜 / 盯盘统一风格</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# 自定义CSS样式 - 深色未来科技风
 st.markdown("""
 <style>
-    /* 全局样式 */
+    :root {
+        --bg-main: #050814;
+        --bg-surface: #0b1224;
+        --bg-elevated: #111b33;
+        --text-primary: #e2ecff;
+        --text-secondary: #9fb2d9;
+        --accent-cyan: #22d3ee;
+        --accent-purple: #8b5cf6;
+        --accent-success: #10b981;
+        --accent-danger: #f43f5e;
+        --accent-warning: #f59e0b;
+        --border-glow: rgba(34, 211, 238, 0.35);
+    }
+
     .main {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background:
+            radial-gradient(circle at 15% 15%, rgba(34, 211, 238, 0.12), transparent 35%),
+            radial-gradient(circle at 85% 10%, rgba(139, 92, 246, 0.16), transparent 30%),
+            linear-gradient(160deg, #050814 0%, #0b1224 55%, #060b19 100%);
         background-attachment: fixed;
     }
-    
+
+    html,
+    body,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stMainBlockContainer"] {
+        background: transparent;
+        color-scheme: dark;
+    }
+
     .stApp {
         background: transparent;
+        color: var(--text-primary);
     }
-    
-    /* 主容器 */
+
+    .stMarkdown,
+    .stMarkdown p,
+    .stMarkdown li,
+    .stMarkdown span,
+    .stMarkdown strong,
+    .stMarkdown em,
+    .stCaption,
+    .stText,
+    .stAlert,
+    .stAlert p,
+    .stAlert div,
+    .streamlit-expanderHeader,
+    .streamlit-expanderContent,
+    [data-testid="stSidebar"] .stMarkdown,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] li,
+    [data-testid="stSidebar"] strong {
+        color: var(--text-primary) !important;
+    }
+
+    [data-testid="stMetricLabel"],
+    [data-testid="stMetricValue"],
+    [data-testid="stMetricDelta"] {
+        color: var(--text-primary) !important;
+    }
+
+    [data-testid="stMetricLabel"] {
+        color: var(--text-secondary) !important;
+        font-size: 0.86rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    [data-testid="stMetricValue"] {
+        font-weight: 800;
+        text-shadow: 0 0 10px rgba(34, 211, 238, 0.12);
+    }
+
+    [data-testid="stMetricDelta"] {
+        color: var(--accent-cyan) !important;
+    }
+
+    .stMarkdown,
+    .stMarkdown *,
+    [data-testid="stMarkdownContainer"],
+    [data-testid="stMarkdownContainer"] *,
+    .stCaption,
+    .stCaption *,
+    .stText,
+    .stText *,
+    label,
+    small,
+    p,
+    li,
+    span,
+    a,
+    code,
+    pre {
+        color: var(--text-primary) !important;
+    }
+
+    .stCaption,
+    .stCaption *,
+    .section-hint,
+    .nav-subtitle,
+    .status-pill {
+        color: var(--text-secondary) !important;
+    }
+
+    [data-testid="stDataFrame"],
+    [data-testid="stDataFrame"] div,
+    [data-testid="stDataFrame"] span,
+    table,
+    thead,
+    tbody,
+    tr,
+    th,
+    td {
+        color: var(--text-primary) !important;
+    }
+
+    table,
+    thead,
+    tbody,
+    tr,
+    th,
+    td {
+        background-color: rgba(11, 18, 36, 0.82) !important;
+        border-color: rgba(34, 211, 238, 0.14) !important;
+    }
+
+    th {
+        color: #dff7ff !important;
+        font-weight: 700 !important;
+    }
+
+    td {
+        color: var(--text-primary) !important;
+    }
+
+    [data-baseweb="input"],
+    [data-baseweb="select"],
+    [data-baseweb="textarea"],
+    [data-baseweb="combobox"],
+    [data-baseweb="radio"] {
+        color: var(--text-primary) !important;
+    }
+
+    [data-baseweb="input"] input,
+    [data-baseweb="textarea"] textarea,
+    [data-baseweb="select"] > div,
+    [data-baseweb="combobox"] > div {
+        background: rgba(11, 18, 36, 0.92) !important;
+        color: var(--text-primary) !important;
+    }
+
+    [role="radiogroup"] {
+        display: flex;
+        gap: 0.55rem;
+        padding: 0.35rem;
+        background: rgba(17, 27, 51, 0.85);
+        border: 1px solid rgba(34, 211, 238, 0.16);
+        border-radius: 14px;
+        flex-wrap: wrap;
+    }
+
+    [role="radiogroup"] label {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(34, 211, 238, 0.14);
+        border-radius: 999px;
+        padding: 0.35rem 0.75rem;
+        color: var(--text-primary) !important;
+    }
+
+    [role="radiogroup"] label:hover {
+        border-color: rgba(34, 211, 238, 0.45);
+    }
+
+    .stInfo,
+    .stWarning,
+    .stSuccess,
+    .stError {
+        border-radius: 14px;
+        border: 1px solid rgba(34, 211, 238, 0.12);
+    }
+
+    .dashboard-banner,
+    .tech-panel,
+    .hero-card,
+    .control-card,
+    .surface-card {
+        background: linear-gradient(150deg, rgba(16, 27, 52, 0.9), rgba(10, 18, 36, 0.96));
+        border: 1px solid rgba(34, 211, 238, 0.16);
+        border-radius: 18px;
+        box-shadow: 0 18px 40px rgba(3, 8, 23, 0.45);
+        color: var(--text-primary);
+    }
+
+    .dashboard-banner {
+        padding: 1.2rem 1.4rem;
+        margin-bottom: 1rem;
+    }
+
+    .banner-grid {
+        display: grid;
+        grid-template-columns: 1.6fr 1fr;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    .banner-title {
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: #eaf4ff;
+        margin-bottom: 0.2rem;
+    }
+
+    .banner-subtitle {
+        color: var(--text-secondary);
+        font-size: 0.92rem;
+    }
+
+    .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        justify-content: flex-end;
+    }
+
+    .tech-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.45rem 0.8rem;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(34, 211, 238, 0.18);
+        color: var(--text-primary);
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+
+    .section-title {
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: #dff7ff;
+        margin: 0.45rem 0 0.65rem;
+        text-transform: uppercase;
+    }
+
+    .section-hint {
+        color: var(--text-secondary);
+        font-size: 0.84rem;
+        margin-bottom: 0.55rem;
+    }
+
+    .nav-stack {
+        padding: 0.35rem 0;
+    }
+
+    [data-testid="stSidebar"] .stButton > button,
+    .stButton > button,
+    .stFormSubmitButton > button {
+        background: linear-gradient(120deg, #0ea5e9 0%, #8b5cf6 100%);
+        color: #f4fbff !important;
+        border: 1px solid rgba(34, 211, 238, 0.28);
+        border-radius: 16px;
+        padding: 0.68rem 1.15rem;
+        font-weight: 700;
+        box-shadow: 0 8px 20px rgba(8, 18, 40, 0.45);
+    }
+
+    [data-testid="stSidebar"] .stButton > button {
+        min-height: 3rem;
+        text-align: left;
+        padding-left: 0.95rem;
+    }
+
+    .stButton > button:hover,
+    .stFormSubmitButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 28px rgba(10, 22, 52, 0.58);
+    }
+
+    .stButton > button:focus,
+    .stFormSubmitButton > button:focus {
+        outline: none;
+        box-shadow: 0 0 0 0.16rem rgba(34, 211, 238, 0.28);
+    }
+
+    .control-dock {
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+    }
+
+    .control-card {
+        padding: 0.85rem 0.95rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .button-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+    }
+
+    .status-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        margin-top: 0.45rem;
+    }
+
+    .status-pill {
+        padding: 0.35rem 0.7rem;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(34, 211, 238, 0.16);
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+    }
+
     .block-container {
-        padding-top: 2rem;
+        padding-top: 1.6rem;
         padding-bottom: 2rem;
-        background: rgba(255, 255, 255, 0.95);
-        border-radius: 20px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-        margin-top: 1rem;
+        background: rgba(11, 18, 36, 0.78);
+        border: 1px solid rgba(34, 211, 238, 0.18);
+        border-radius: 18px;
+        box-shadow: 0 18px 45px rgba(3, 8, 23, 0.6);
+        backdrop-filter: blur(8px);
+        margin-top: 0.8rem;
     }
-    
-    /* 顶部导航栏 */
+
     .top-nav {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1.5rem 2rem;
-        border-radius: 15px;
-        margin-bottom: 2rem;
-        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+        background: linear-gradient(120deg, rgba(34, 211, 238, 0.2), rgba(139, 92, 246, 0.25));
+        border: 1px solid var(--border-glow);
+        padding: 1.2rem 1.8rem;
+        border-radius: 14px;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 0 22px rgba(34, 211, 238, 0.12);
+        color: var(--text-primary);
     }
-    
+
     .nav-title {
         font-size: 2rem;
         font-weight: 800;
-        color: white;
+        color: var(--text-primary);
         text-align: center;
         margin: 0;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-        letter-spacing: 1px;
+        letter-spacing: 0.8px;
     }
-    
+
     .nav-subtitle {
         text-align: center;
-        color: rgba(255, 255, 255, 0.9);
-        font-size: 0.95rem;
-        margin-top: 0.5rem;
-        font-weight: 300;
+        color: var(--text-secondary);
+        font-size: 0.92rem;
+        margin-top: 0.45rem;
     }
-    
-    /* 标签页样式 */
+
+    .feature-nav-shell {
+        position: sticky;
+        top: 0.45rem;
+        z-index: 1200;
+        margin-bottom: 0.65rem;
+    }
+
+    .feature-nav-track {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        padding: 0.72rem 0.78rem;
+        border-radius: 14px;
+        border: 1px solid rgba(34, 211, 238, 0.26);
+        background: rgba(10, 16, 33, 0.84);
+        backdrop-filter: blur(14px);
+        box-shadow: 0 14px 34px rgba(3, 8, 23, 0.62);
+    }
+
+    .feature-tab {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 2.35rem;
+        padding: 0.45rem 0.9rem;
+        border-radius: 11px;
+        font-weight: 800;
+        font-size: 0.93rem;
+        text-decoration: none !important;
+        border: 1px solid transparent;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+    }
+
+    .feature-tab-inactive {
+        background: linear-gradient(180deg, #f6d96b 0%, #c89200 100%);
+        color: #241800 !important;
+        border-color: rgba(217, 166, 24, 0.78);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .feature-tab-inactive:hover {
+        background: linear-gradient(180deg, #ffe38a 0%, #d6a20e 100%);
+        color: #110b00 !important;
+        border-color: rgba(255, 225, 127, 0.92);
+        transform: translateY(-1px);
+    }
+
+    .feature-tab-active {
+        background: linear-gradient(120deg, rgba(34, 211, 238, 0.22), rgba(139, 92, 246, 0.3));
+        color: #e8f6ff !important;
+        border-color: rgba(34, 211, 238, 0.5);
+        box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.2), 0 8px 22px rgba(8, 18, 40, 0.46);
+    }
+
+    .feature-tab-active:hover {
+        color: #ffffff !important;
+        border-color: rgba(124, 234, 255, 0.8);
+    }
+
     .stTabs [data-baseweb="tab-list"] {
-        gap: 2rem;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1rem 2rem;
-        border-radius: 15px;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+        gap: 1rem;
+        background: rgba(17, 27, 51, 0.85);
+        border: 1px solid rgba(34, 211, 238, 0.16);
+        padding: 0.8rem 1rem;
+        border-radius: 14px;
+        position: sticky;
+        top: 0.75rem;
+        z-index: 999;
+        backdrop-filter: blur(14px);
+        box-shadow: 0 14px 34px rgba(3, 8, 23, 0.6);
     }
-    
+
     .stTabs [data-baseweb="tab"] {
-        height: 60px;
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 10px;
-        color: white;
-        font-weight: 600;
-        font-size: 1.1rem;
-        padding: 0 2rem;
-        border: none;
-        transition: all 0.3s ease;
+        height: 52px;
+        background: linear-gradient(180deg, #f6d96b 0%, #c89200 100%);
+        border-radius: 11px;
+        color: #241800 !important;
+        font-weight: 800;
+        font-size: 1rem;
+        padding: 0 1.2rem;
+        border: 1px solid rgba(217, 166, 24, 0.75);
+        transition: all 0.2s ease;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 4px 12px rgba(0, 0, 0, 0.18);
     }
-    
+
     .stTabs [data-baseweb="tab"]:hover {
-        background: rgba(255, 255, 255, 0.2);
-        transform: translateY(-2px);
+        border-color: rgba(255, 225, 127, 0.9);
+        color: #140f00 !important;
+        background: linear-gradient(180deg, #ffe38a 0%, #d6a20e 100%);
+        transform: translateY(-1px);
     }
-    
+
     .stTabs [aria-selected="true"] {
-        background: white !important;
-        color: #667eea !important;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        background: linear-gradient(120deg, rgba(34, 211, 238, 0.2), rgba(139, 92, 246, 0.25)) !important;
+        color: #dff7ff !important;
+        border-color: rgba(34, 211, 238, 0.5);
+        box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.22), 0 8px 22px rgba(8, 18, 40, 0.45);
     }
-    
-    /* 侧边栏美化 */
-    .css-1d391kg, [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
-        padding-top: 2rem;
+
+    .stTabs [aria-selected="true"]:hover {
+        background: linear-gradient(120deg, rgba(34, 211, 238, 0.25), rgba(139, 92, 246, 0.34)) !important;
+        color: #ffffff !important;
     }
-    
-    .css-1d391kg h1, .css-1d391kg h2, .css-1d391kg h3,
-    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-        color: white !important;
+
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0b1224 0%, #09132a 100%);
+        border-right: 1px solid rgba(34, 211, 238, 0.18);
+        padding-top: 1.2rem;
     }
-    
-    .css-1d391kg .stMarkdown, [data-testid="stSidebar"] .stMarkdown {
-        color: rgba(255, 255, 255, 0.95) !important;
+
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] .stMarkdown,
+    [data-testid="stSidebar"] p {
+        color: var(--text-primary) !important;
     }
-    
-    /* 分析师卡片 */
+
     .agent-card {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        padding: 1.5rem;
-        border-radius: 15px;
-        margin: 1rem 0;
-        border-left: 5px solid #667eea;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-        transition: transform 0.3s ease;
+        background: linear-gradient(150deg, rgba(16, 27, 52, 0.9), rgba(10, 18, 36, 0.96));
+        padding: 1.2rem;
+        border-radius: 14px;
+        margin: 0.9rem 0;
+        border-left: 4px solid var(--accent-cyan);
+        border-top: 1px solid rgba(34, 211, 238, 0.2);
+        color: var(--text-primary);
     }
-    
-    .agent-card:hover {
-        transform: translateX(5px);
-    }
-    
-    /* 决策卡片 */
+
     .decision-card {
-        background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
-        padding: 2rem;
-        border-radius: 15px;
-        border: 3px solid #4caf50;
-        margin: 1.5rem 0;
-        box-shadow: 0 8px 30px rgba(76, 175, 80, 0.2);
+        background: linear-gradient(150deg, rgba(6, 40, 44, 0.88), rgba(10, 29, 35, 0.94));
+        padding: 1.4rem;
+        border-radius: 14px;
+        border: 1px solid rgba(16, 185, 129, 0.45);
+        margin: 1rem 0;
+        box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.12);
+        color: var(--text-primary);
     }
-    
-    /* 警告卡片 */
+
     .warning-card {
-        background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
-        padding: 1.5rem;
-        border-radius: 15px;
-        border-left: 5px solid #ff9800;
-        box-shadow: 0 4px 15px rgba(255, 152, 0, 0.2);
+        background: linear-gradient(150deg, rgba(48, 27, 8, 0.85), rgba(34, 20, 6, 0.9));
+        padding: 1.2rem;
+        border-radius: 14px;
+        border-left: 4px solid var(--accent-warning);
+        color: var(--text-primary);
     }
-    
-    /* 指标卡片 */
-    .metric-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 12px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-        text-align: center;
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        border-top: 4px solid #667eea;
+
+    .theme-bull-card {
+        border-left-color: var(--accent-success) !important;
     }
-    
-    .metric-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+
+    .theme-bear-card {
+        border-left-color: var(--accent-danger) !important;
     }
-    
-    /* 按钮美化 */
-    .stButton>button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
+
+    .theme-info-card {
+        border-left-color: var(--accent-cyan) !important;
+    }
+
+    .theme-strategy-card {
+        border-left-color: var(--accent-purple) !important;
+    }
+
+    .stButton>button,
+    .stFormSubmitButton>button,
+    [data-testid="stDownloadButton"] button {
+        background: linear-gradient(120deg, #0ea5e9 0%, #8b5cf6 100%);
+        color: #eef9ff !important;
+        border: 1px solid rgba(34, 211, 238, 0.3);
+        border-radius: 16px;
+        padding: 0.72rem 1.35rem;
+        font-weight: 700;
+        box-shadow: 0 8px 20px rgba(8, 18, 40, 0.45);
+    }
+
+    .stButton>button:hover,
+    .stFormSubmitButton>button:hover,
+    [data-testid="stDownloadButton"] button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 26px rgba(10, 22, 52, 0.55);
+    }
+
+    .stButton>button:focus,
+    .stFormSubmitButton>button:focus,
+    [data-testid="stDownloadButton"] button:focus {
+        outline: none;
+        box-shadow: 0 0 0 0.16rem rgba(34, 211, 238, 0.28);
+    }
+
+    .stTextInput>div>div>input,
+    .stTextArea textarea,
+    .stNumberInput input,
+    .stSelectbox div,
+    .stMultiSelect div {
         border-radius: 10px;
-        padding: 0.75rem 2rem;
-        font-weight: 600;
-        font-size: 1rem;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        border: 1px solid rgba(34, 211, 238, 0.28);
+        background: rgba(11, 18, 36, 0.9);
+        color: var(--text-primary);
     }
-    
-    .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 25px rgba(102, 126, 234, 0.4);
+
+    .stTextInput>div>div>input:focus,
+    .stTextArea textarea:focus,
+    .stNumberInput input:focus,
+    .stSelectbox div:focus,
+    .stMultiSelect div:focus {
+        border-color: var(--accent-cyan);
+        box-shadow: 0 0 0 0.15rem rgba(34, 211, 238, 0.2);
     }
-    
-    /* 输入框美化 */
-    .stTextInput>div>div>input {
-        border-radius: 10px;
-        border: 2px solid #e0e0e0;
-        padding: 0.75rem;
-        font-size: 1rem;
-        transition: border-color 0.3s ease;
+
+    div[data-baseweb="select"],
+    div[data-baseweb="input"],
+    div[data-baseweb="textarea"],
+    div[data-baseweb="combobox"],
+    div[data-baseweb="select"] *,
+    div[data-baseweb="input"] *,
+    div[data-baseweb="textarea"] *,
+    div[data-baseweb="combobox"] *,
+    div[role="listbox"] *,
+    div[data-testid="stSelectbox"] *,
+    div[data-testid="stMultiSelect"] *,
+    div[data-testid="stTextInput"] *,
+    div[data-testid="stTextArea"] *,
+    div[data-testid="stNumberInput"] *,
+    div[data-testid="stDateInput"] *,
+    div[data-testid="stTimeInput"] * {
+        color: var(--text-primary) !important;
     }
-    
-    .stTextInput>div>div>input:focus {
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
-    
-    /* 进度条美化 */
+
     .stProgress > div > div > div > div {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(90deg, #22d3ee 0%, #8b5cf6 100%);
     }
-    
-    /* 成功/错误/警告/信息消息框 */
-    .stSuccess, .stError, .stWarning, .stInfo {
-        border-radius: 10px;
-        padding: 1rem;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    }
-    
-    /* 图表容器 */
-    .js-plotly-plot {
-        border-radius: 15px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-    }
-    
-    /* Expander美化 */
+
     .streamlit-expanderHeader {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        background: rgba(16, 27, 51, 0.9);
         border-radius: 10px;
-        font-weight: 600;
+        border: 1px solid rgba(34, 211, 238, 0.16);
     }
-    
-    /* 数据框美化 */
-    .dataframe {
-        border-radius: 10px;
-        overflow: hidden;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+
+    .js-plotly-plot {
+        border-radius: 12px;
+        border: 1px solid rgba(34, 211, 238, 0.16);
     }
-    
-    /* 隐藏Streamlit默认元素 */
+
+    .hero-card {
+        padding: 1rem 1.1rem;
+        margin: 0.75rem 0 1rem;
+    }
+
+    .hero-card h2,
+    .hero-card h3,
+    .hero-card p {
+        color: var(--text-primary);
+        margin-bottom: 0.4rem;
+    }
+
+    .hero-card .stMetric {
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 14px;
+        padding: 0.55rem 0.75rem;
+        border: 1px solid rgba(34, 211, 238, 0.12);
+    }
+
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
-    /* 响应式设计 */
+
     @media (max-width: 768px) {
-        .nav-title {
-            font-size: 1.5rem;
-        }
-        .stTabs [data-baseweb="tab"] {
-            font-size: 0.9rem;
-            padding: 0 1rem;
-        }
+        .nav-title { font-size: 1.5rem; }
+        .stTabs [data-baseweb="tab"] { font-size: 0.9rem; padding: 0 0.7rem; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -303,6 +977,9 @@ def main():
     # 尝试从数据库加载最新的分析记录（如果session中没有）
     if load_latest_analysis_from_db():
         st.success("✅ 已从历史记录恢复最近的分析结果")
+
+    # 先同步导航状态，确保顶部选项卡固定显示当前页面
+    sync_navigation_state()
     
     # 顶部标题栏
     st.markdown("""
@@ -312,94 +989,13 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    # 侧边栏
+    # 顶部功能导航
+    render_top_navigation()
+
+    # 侧边栏仅保留系统设置与参数
     with st.sidebar:
-        # 快捷导航 - 移到顶部
-        st.markdown("### 🔍 功能导航")
-
-        # 🏠 单股分析（首页）
-        if st.button("🏠 股票分析", width='stretch', key="nav_home", help="返回首页，进行单只股票的深度分析"):
-            # 清除所有功能页面标志
-            for key in ['show_history', 'show_monitor', 'show_config', 'show_main_force',
-                       'show_sector_strategy', 'show_longhubang', 'show_portfolio']:
-                if key in st.session_state:
-                    del st.session_state[key]
-
-        st.markdown("---")
-
-        # 🎯 选股板块
-        with st.expander("🎯 选股板块", expanded=False):
-            st.markdown("**根据不同策略筛选优质股票**")
-
-            if st.button("💰 主力选股", width='stretch', key="nav_main_force", help="基于主力资金流向的选股策略"):
-                st.session_state.show_main_force = True
-                for key in ['show_history', 'show_monitor', 'show_config', 'show_sector_strategy',
-                           'show_longhubang', 'show_portfolio']:
-                    if key in st.session_state:
-                        del st.session_state[key]
-
-        # 📊 策略分析
-        with st.expander("📊 策略分析", expanded=False):
-            st.markdown("**AI驱动的板块和龙虎榜策略**")
-
-            if st.button("🎯 智策板块", width='stretch', key="nav_sector_strategy", help="AI板块策略分析"):
-                st.session_state.show_sector_strategy = True
-                for key in ['show_history', 'show_monitor', 'show_config', 'show_main_force',
-                           'show_longhubang', 'show_portfolio', 'show_smart_monitor']:
-                    if key in st.session_state:
-                        del st.session_state[key]
-
-            if st.button("🐉 智瞰龙虎", width='stretch', key="nav_longhubang", help="龙虎榜深度分析"):
-                st.session_state.show_longhubang = True
-                for key in ['show_history', 'show_monitor', 'show_config', 'show_main_force',
-                           'show_sector_strategy', 'show_portfolio', 'show_smart_monitor']:
-                    if key in st.session_state:
-                        del st.session_state[key]
-
-        # 💼 投资管理
-        with st.expander("💼 投资管理", expanded=False):
-            st.markdown("**持仓跟踪与实时监测**")
-
-            if st.button("📊 持仓分析", width='stretch', key="nav_portfolio", help="投资组合分析与定时跟踪"):
-                st.session_state.show_portfolio = True
-                for key in ['show_history', 'show_monitor', 'show_config', 'show_main_force',
-                           'show_sector_strategy', 'show_longhubang', 'show_smart_monitor']:
-                    if key in st.session_state:
-                        del st.session_state[key]
-
-            if st.button("🤖 AI盯盘", width='stretch', key="nav_smart_monitor", help="DeepSeek AI自动盯盘决策交易（支持A股T+1）"):
-                st.session_state.show_smart_monitor = True
-                for key in ['show_history', 'show_monitor', 'show_config', 'show_main_force',
-                           'show_sector_strategy', 'show_longhubang', 'show_portfolio']:
-                    if key in st.session_state:
-                        del st.session_state[key]
-
-            if st.button("📡 实时监测", width='stretch', key="nav_monitor", help="价格监控与预警提醒"):
-                st.session_state.show_monitor = True
-                for key in ['show_history', 'show_main_force', 'show_longhubang', 'show_portfolio',
-                           'show_config', 'show_sector_strategy', 'show_smart_monitor']:
-                    if key in st.session_state:
-                        del st.session_state[key]
-
-        st.markdown("---")
-
-        # 📖 历史记录
-        if st.button("📖 历史记录", width='stretch', key="nav_history", help="查看历史分析记录"):
-            st.session_state.show_history = True
-            for key in ['show_monitor', 'show_longhubang', 'show_portfolio', 'show_config',
-                       'show_main_force', 'show_sector_strategy']:
-                if key in st.session_state:
-                    del st.session_state[key]
-
-        # ⚙️ 环境配置
-        if st.button("⚙️ 环境配置", width='stretch', key="nav_config", help="系统设置与API配置"):
-            st.session_state.show_config = True
-            for key in ['show_history', 'show_monitor', 'show_main_force', 'show_sector_strategy',
-                       'show_longhubang', 'show_portfolio']:
-                if key in st.session_state:
-                    del st.session_state[key]
-
-        st.markdown("---")
+        st.markdown("### 🔧 系统设置")
+        st.caption("顶部为功能入口，侧边栏保留运行参数与环境配置。")
 
         # 系统配置
         st.markdown("### ⚙️ 系统配置")
@@ -515,17 +1111,38 @@ def main():
         return
 
     # 主界面
+    display_dashboard_banner(api_key_status, selected_model, period)
+
     # 添加单个/批量分析切换
-    col_mode1, col_mode2 = st.columns([1, 3])
-    with col_mode1:
+    st.markdown("<div class='section-title'>🧭 分析控制台</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-hint'>左侧切换模式，中间输入股票，右侧执行分析与清理操作。</div>", unsafe_allow_html=True)
+
+    col_mode, col_input, col_actions = st.columns([1.05, 1.7, 1.0])
+    with col_mode:
         analysis_mode = st.radio(
             "分析模式",
             ["单个分析", "批量分析"],
-            horizontal=True,
+            horizontal=False,
             help="单个分析：分析单只股票；批量分析：同时分析多只股票"
         )
 
-    with col_mode2:
+    with col_input:
+        if analysis_mode == "单个分析":
+            stock_input = st.text_input(
+                "🔍 请输入股票代码或名称",
+                placeholder="例如: AAPL, 000001, 00700",
+                help="支持A股(如000001)、港股(如00700)和美股(如AAPL)"
+            )
+            st.caption("单股分析更适合快速查看某一标的的全景诊断")
+        else:
+            stock_input = st.text_area(
+                "🔍 请输入多个股票代码（每行一个或用逗号分隔）",
+                placeholder="例如:\n000001\n600036\n00700\n\n或者: 000001, 600036, 00700, AAPL",
+                height=150,
+                help="支持多种格式：每行一个代码或用逗号分隔。支持A股、港股、美股"
+            )
+            st.caption("批量分析更适合做横向对比与组合筛选")
+
         if analysis_mode == "批量分析":
             batch_mode = st.radio(
                 "批量模式",
@@ -535,48 +1152,20 @@ def main():
             )
             st.session_state.batch_mode = batch_mode
 
-    st.markdown("---")
-
-    if analysis_mode == "单个分析":
-        # 单个股票分析界面
-        col1, col2, col3 = st.columns([2, 1, 1])
-
-        with col1:
-            stock_input = st.text_input(
-                "🔍 请输入股票代码或名称",
-                placeholder="例如: AAPL, 000001, 00700",
-                help="支持A股(如000001)、港股(如00700)和美股(如AAPL)"
-            )
-
-        with col2:
-            analyze_button = st.button("🚀 开始分析", type="primary", width='stretch')
-
-        with col3:
-            if st.button("🔄 清除缓存", width='stretch'):
-                st.cache_data.clear()
-                st.success("缓存已清除")
-
-    else:
-        # 批量股票分析界面
-        stock_input = st.text_area(
-            "🔍 请输入多个股票代码（每行一个或用逗号分隔）",
-            placeholder="例如:\n000001\n600036\n00700\n\n或者: 000001, 600036, 00700, AAPL",
-            height=120,
-            help="支持多种格式：每行一个代码或用逗号分隔。支持A股、港股、美股"
+    with col_actions:
+        st.markdown("### ⚡ 快速操作")
+        analyze_button = st.button(
+            "🚀 开始分析" if analysis_mode == "单个分析" else "🚀 开始批量分析",
+            type="primary",
+            width='stretch'
         )
-
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            analyze_button = st.button("🚀 开始批量分析", type="primary", width='stretch')
-        with col2:
-            if st.button("🔄 清除缓存", width='stretch'):
-                st.cache_data.clear()
-                st.success("缓存已清除")
-        with col3:
-            if st.button("🗑️ 清除结果", width='stretch'):
-                if 'batch_analysis_results' in st.session_state:
-                    del st.session_state.batch_analysis_results
-                st.success("已清除批量分析结果")
+        if st.button("🔄 清除缓存", width='stretch'):
+            st.cache_data.clear()
+            st.success("缓存已清除")
+        if analysis_mode == "批量分析" and st.button("🗑️ 清除结果", width='stretch'):
+            if 'batch_analysis_results' in st.session_state:
+                del st.session_state.batch_analysis_results
+            st.success("已清除批量分析结果")
 
     # 分析师团队选择
     st.markdown("---")
@@ -1401,6 +1990,8 @@ def display_stock_chart(stock_data, stock_info):
         high=stock_data['High'],
         low=stock_data['Low'],
         close=stock_data['Close'],
+        increasing_line_color='#ef4444',
+        decreasing_line_color='#14b8a6',
         name="K线"
     ))
 
@@ -1410,7 +2001,7 @@ def display_stock_chart(stock_data, stock_info):
             x=stock_data.index,
             y=stock_data['MA5'],
             name="MA5",
-            line=dict(color='orange', width=1)
+            line=dict(color='#f59e0b', width=1.2)
         ))
 
     if 'MA20' in stock_data.columns:
@@ -1418,7 +2009,7 @@ def display_stock_chart(stock_data, stock_info):
             x=stock_data.index,
             y=stock_data['MA20'],
             name="MA20",
-            line=dict(color='blue', width=1)
+            line=dict(color='#22d3ee', width=1.2)
         ))
 
     if 'MA60' in stock_data.columns:
@@ -1426,7 +2017,7 @@ def display_stock_chart(stock_data, stock_info):
             x=stock_data.index,
             y=stock_data['MA60'],
             name="MA60",
-            line=dict(color='purple', width=1)
+            line=dict(color='#a78bfa', width=1.2)
         ))
 
     # 布林带
@@ -1435,21 +2026,24 @@ def display_stock_chart(stock_data, stock_info):
             x=stock_data.index,
             y=stock_data['BB_upper'],
             name="布林上轨",
-            line=dict(color='red', width=1, dash='dash')
+            line=dict(color='#fb7185', width=1, dash='dash')
         ))
         fig.add_trace(go.Scatter(
             x=stock_data.index,
             y=stock_data['BB_lower'],
             name="布林下轨",
-            line=dict(color='green', width=1, dash='dash'),
+            line=dict(color='#34d399', width=1, dash='dash'),
             fill='tonexty',
-            fillcolor='rgba(0,100,80,0.1)'
+            fillcolor='rgba(34,211,238,0.08)'
         ))
 
     fig.update_layout(
         title=f"{stock_info.get('name', 'N/A')} 股价走势",
         xaxis_title="日期",
         yaxis_title="价格",
+        paper_bgcolor='rgba(6, 11, 25, 0.92)',
+        plot_bgcolor='rgba(6, 11, 25, 0.92)',
+        font=dict(color='#d6e4ff'),
         height=500,
         showlegend=True
     )
@@ -1465,14 +2059,17 @@ def display_stock_chart(stock_data, stock_info):
             x=stock_data.index,
             y=stock_data['Volume'],
             name="成交量",
-            marker_color='lightblue'
+            marker_color='rgba(56, 189, 248, 0.78)'
         ))
 
         fig_volume.update_layout(
             title="成交量",
             xaxis_title="日期",
             yaxis_title="成交量",
-            height=200
+            paper_bgcolor='rgba(6, 11, 25, 0.92)',
+            plot_bgcolor='rgba(6, 11, 25, 0.92)',
+            font=dict(color='#d6e4ff'),
+            height=220
         )
 
         # 生成唯一的key
@@ -1529,13 +2126,20 @@ def display_final_decision(final_decision, stock_info, agents_results=None, disc
     """显示最终投资决策"""
     st.subheader("📋 最终投资决策")
 
-    if isinstance(final_decision, dict) and "decision_text" not in final_decision:
+    normalized_decision = _normalize_final_decision_payload(final_decision)
+    structured_fields = {
+        "rating", "target_price", "operation_advice", "entry_range", "take_profit",
+        "stop_loss", "holding_period", "position_size", "risk_warning", "confidence_level"
+    }
+    is_structured = isinstance(normalized_decision, dict) and bool(structured_fields.intersection(normalized_decision.keys()))
+
+    if is_structured:
         # JSON格式的决策
         col1, col2 = st.columns([1, 2])
 
         with col1:
             # 投资评级
-            rating = final_decision.get('rating', '未知')
+            rating = normalized_decision.get('rating', '未知')
             rating_color = {"买入": "🟢", "持有": "🟡", "卖出": "🔴"}.get(rating, "⚪")
 
             st.markdown(f"""
@@ -1546,33 +2150,33 @@ def display_final_decision(final_decision, stock_info, agents_results=None, disc
             """, unsafe_allow_html=True)
 
             # 关键指标
-            confidence = final_decision.get('confidence_level', 'N/A')
+            confidence = normalized_decision.get('confidence_level', 'N/A')
             st.metric("信心度", f"{confidence}/10")
 
-            target_price = final_decision.get('target_price', 'N/A')
+            target_price = normalized_decision.get('target_price', 'N/A')
             st.metric("目标价格", f"{target_price}")
 
-            position_size = final_decision.get('position_size', 'N/A')
+            position_size = normalized_decision.get('position_size', 'N/A')
             st.metric("建议仓位", f"{position_size}")
 
         with col2:
             # 详细建议
             st.markdown("**🎯 操作建议:**")
-            st.write(final_decision.get('operation_advice', '暂无建议'))
+            st.write(normalized_decision.get('operation_advice', '暂无建议'))
 
             st.markdown("**📍 关键位置:**")
             col2_1, col2_2 = st.columns(2)
 
             with col2_1:
-                st.write(f"**进场区间:** {final_decision.get('entry_range', 'N/A')}")
-                st.write(f"**止盈位:** {final_decision.get('take_profit', 'N/A')}")
+                st.write(f"**进场区间:** {normalized_decision.get('entry_range', 'N/A')}")
+                st.write(f"**止盈位:** {normalized_decision.get('take_profit', 'N/A')}")
 
             with col2_2:
-                st.write(f"**止损位:** {final_decision.get('stop_loss', 'N/A')}")
-                st.write(f"**持有周期:** {final_decision.get('holding_period', 'N/A')}")
+                st.write(f"**止损位:** {normalized_decision.get('stop_loss', 'N/A')}")
+                st.write(f"**持有周期:** {normalized_decision.get('holding_period', 'N/A')}")
 
         # 风险提示
-        risk_warning = final_decision.get('risk_warning', '')
+        risk_warning = normalized_decision.get('risk_warning', '')
         if risk_warning:
             st.markdown(f"""
             <div class="warning-card">
@@ -1583,13 +2187,16 @@ def display_final_decision(final_decision, stock_info, agents_results=None, disc
 
     else:
         # 文本格式的决策
-        decision_text = final_decision.get('decision_text', str(final_decision))
+        if isinstance(normalized_decision, dict):
+            decision_text = normalized_decision.get('decision_text', str(normalized_decision))
+        else:
+            decision_text = str(normalized_decision)
         st.write(decision_text)
 
     # 添加PDF导出功能
     st.markdown("---")
     if agents_results and discussion_result:
-        display_pdf_export_section(stock_info, agents_results, discussion_result, final_decision)
+        display_pdf_export_section(stock_info, agents_results, discussion_result, normalized_decision)
     else:
         st.warning("⚠️ PDF导出功能需要完整的分析数据")
 
@@ -1736,7 +2343,7 @@ def display_add_to_monitor_dialog(record):
     st.markdown("---")
     st.subheader("➕ 加入监测")
 
-    final_decision = record['final_decision']
+    final_decision = _normalize_final_decision_payload(record['final_decision'])
 
     # 从final_decision中提取关键数据
     if isinstance(final_decision, dict):
@@ -2001,9 +2608,13 @@ def display_record_detail(record_id):
 
     # 最终决策
     st.subheader("📋 最终投资决策")
-    final_decision = record['final_decision']
+    final_decision = _normalize_final_decision_payload(record['final_decision'])
     if final_decision:
-        if isinstance(final_decision, dict) and "decision_text" not in final_decision:
+        structured_fields = {
+            "rating", "target_price", "operation_advice", "entry_range", "take_profit",
+            "stop_loss", "holding_period", "position_size", "risk_warning", "confidence_level"
+        }
+        if isinstance(final_decision, dict) and bool(structured_fields.intersection(final_decision.keys())):
             col1, col2 = st.columns([1, 2])
 
             with col1:
@@ -2041,7 +2652,10 @@ def display_record_detail(record_id):
                     st.write(f"**止损位:** {final_decision.get('stop_loss', 'N/A')}")
                     st.write(f"**持有周期:** {final_decision.get('holding_period', 'N/A')}")
         else:
-            decision_text = final_decision.get('decision_text', str(final_decision))
+            if isinstance(final_decision, dict):
+                decision_text = final_decision.get('decision_text', str(final_decision))
+            else:
+                decision_text = str(final_decision)
             st.write(decision_text)
 
     # 加入监测功能
@@ -2520,7 +3134,7 @@ def display_batch_analysis_results(results, period):
 
     # 提示信息
     if saved_count > 0:
-        st.info(f"💾 已有 {saved_count} 只股票的分析结果保存到历史记录，可在侧边栏点击「📖 历史记录」查看")
+        st.info(f"💾 已有 {saved_count} 只股票的分析结果保存到历史记录，可在顶部导航点击「📖 历史记录」查看")
 
     st.markdown("---")
 

@@ -1,7 +1,4 @@
-"""
-智能盯盘 - UI界面
-集成到主程序的智能盯盘功能界面
-"""
+"""@File: smart_monitor_ui.py@Contains: [smart_monitor_ui, render_realtime_analysis, display_analysis_result, render_monitor_tasks, render_position_management, render_history, render_settings, _render_task_kline_and_decisions]@Responsibilities:    - 提供AI盯盘模块的多标签页界面    - 展示实时分析、监控任务、持仓管理、历史记录和系统设置    - 统一深色科技风前端与文字可读性修复@Non-Responsibilities:    - 不负责AI策略推理实现    - 不负责数据库表结构定义    - 不负责交易接口底层通信@Input: Streamlit用户交互、股票代码、监控任务与配置数据@Output: 渲染盯盘页面、触发分析/监控操作、显示图表与结果"""
 
 import streamlit as st
 import pandas as pd
@@ -22,8 +19,64 @@ load_dotenv()
 
 def smart_monitor_ui():
     """AI盯盘主界面"""
-    
-    st.title("🤖 AI盯盘 - AI决策交易系统")
+
+    st.markdown(
+        """
+        <style>
+            .smart-monitor-title {
+                background: linear-gradient(135deg, rgba(34, 211, 238, 0.16), rgba(139, 92, 246, 0.2));
+                border: 1px solid rgba(34, 211, 238, 0.18);
+                border-radius: 16px;
+                padding: 1rem 1.2rem;
+                margin-bottom: 1rem;
+                box-shadow: 0 16px 36px rgba(3, 8, 23, 0.42);
+            }
+            .smart-monitor-title h1,
+            .smart-monitor-title p,
+            .smart-monitor-title span,
+            .smart-monitor-title div {
+                color: #e2ecff !important;
+            }
+            .smart-monitor-chip-row {
+                display: flex;
+                gap: 0.5rem;
+                flex-wrap: wrap;
+                margin-top: 0.65rem;
+            }
+            .smart-monitor-chip {
+                padding: 0.32rem 0.72rem;
+                border-radius: 999px;
+                border: 1px solid rgba(34, 211, 238, 0.16);
+                background: rgba(11, 18, 36, 0.75);
+                color: #cfe5ff !important;
+                font-size: 0.82rem;
+            }
+            .smart-monitor-shell,
+            .smart-monitor-shell p,
+            .smart-monitor-shell li,
+            .smart-monitor-shell strong,
+            .smart-monitor-shell span,
+            .smart-monitor-shell small,
+            .smart-monitor-shell label,
+            .smart-monitor-shell .stMarkdown,
+            .smart-monitor-shell .stCaption {
+                color: #e2ecff !important;
+            }
+        </style>
+        <div class="smart-monitor-title">
+            <h1>🤖 AI盯盘 - AI决策交易系统</h1>
+            <p>参照 AlphaArena 的多智能体交易框架 · 深色科技仪表盘 · 支持实时分析 / 监控 / 持仓 / 历史</p>
+            <div class="smart-monitor-chip-row">
+                <span class="smart-monitor-chip">🛰️ DeepSeek 驱动</span>
+                <span class="smart-monitor-chip">📈 交易时段感知</span>
+                <span class="smart-monitor-chip">🛡️ 风险控制优先</span>
+                <span class="smart-monitor-chip">🌙 深色科技风</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.caption("参照AlphaArena项目，基于DeepSeek AI的A股自动化交易系统")
     
     # 使用说明
@@ -852,11 +905,11 @@ def _render_task_kline_and_decisions(task: Dict, db: SmartMonitorDB, engine):
                     }
                     
                     action_colors = {
-                        'buy': '#ef5350',
-                        'sell': '#26a69a',
-                        'add_position': '#ff9800',
-                        'reduce_position': '#9c27b0',
-                        'hold': '#607d8b'
+                        'buy': '#ef4444',
+                        'sell': '#14b8a6',
+                        'add_position': '#22d3ee',
+                        'reduce_position': '#8b5cf6',
+                        'hold': '#94a3b8'
                     }
                     
                     action_names = {
@@ -868,24 +921,24 @@ def _render_task_kline_and_decisions(task: Dict, db: SmartMonitorDB, engine):
                     }
                     
                     icon = action_icons.get(action, '❓')
-                    color = action_colors.get(action, '#000000')
+                    color = action_colors.get(action, '#9fb2d9')
                     action_name = action_names.get(action, action)
                     
                     # 显示决策卡片
                     with st.container():
                         st.markdown(f"""
-                        <div style="border-left: 4px solid {color}; padding-left: 10px; margin-bottom: 10px;">
-                            <p style="margin: 0;">
+                        <div style="border-left: 4px solid {color}; padding: 12px 12px 10px 12px; margin-bottom: 10px; background: rgba(11, 18, 36, 0.94); border-radius: 12px; box-shadow: 0 10px 24px rgba(3, 8, 23, 0.34); color: #e2ecff;">
+                            <p style="margin: 0; color: #e2ecff;">
                                 <strong>{icon} {action_name}</strong>
                                 {'✅' if executed else '⏳'}
                             </p>
-                            <p style="margin: 5px 0; font-size: 0.85em; color: gray;">
+                            <p style="margin: 5px 0; font-size: 0.85em; color: #9fb2d9;">
                                 {decision_time}
                             </p>
-                            <p style="margin: 5px 0; font-size: 0.9em;">
+                            <p style="margin: 5px 0; font-size: 0.9em; color: #e2ecff;">
                                 <strong>置信度:</strong> {confidence}%
                             </p>
-                            <p style="margin: 5px 0; font-size: 0.9em;">
+                            <p style="margin: 5px 0; font-size: 0.9em; color: #e2ecff;">
                                 <strong>推理:</strong> {reasoning[:100]}{'...' if len(reasoning) > 100 else ''}
                             </p>
                         </div>

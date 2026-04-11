@@ -484,8 +484,8 @@ def display_predictions(predictions):
         if bullish:
             for item in bullish:
                 st.markdown(f"""
-                <div class="agent-card" style="border-left-color: #4caf50;">
-                    <h4>{item.get('sector', 'N/A')} <span style="color: #4caf50;">↑</span></h4>
+                <div class="agent-card theme-bull-card">
+                    <h4>{item.get('sector', 'N/A')} <span style="color: #10b981;">↑</span></h4>
                     <p><strong>信心度:</strong> {item.get('confidence', 0)}/10</p>
                     <p><strong>理由:</strong> {item.get('reason', '')}</p>
                     <p><strong>风险:</strong> {item.get('risk', '')}</p>
@@ -500,8 +500,8 @@ def display_predictions(predictions):
         if bearish:
             for item in bearish:
                 st.markdown(f"""
-                <div class="agent-card" style="border-left-color: #f44336;">
-                    <h4>{item.get('sector', 'N/A')} <span style="color: #f44336;">↓</span></h4>
+                <div class="agent-card theme-bear-card">
+                    <h4>{item.get('sector', 'N/A')} <span style="color: #f43f5e;">↓</span></h4>
                     <p><strong>信心度:</strong> {item.get('confidence', 0)}/10</p>
                     <p><strong>理由:</strong> {item.get('reason', '')}</p>
                     <p><strong>风险:</strong> {item.get('risk', '')}</p>
@@ -609,7 +609,7 @@ def display_predictions(predictions):
             """, unsafe_allow_html=True)
             
             st.markdown(f"""
-            <div class="agent-card" style="border-left-color: #2196f3;">
+            <div class="agent-card theme-info-card">
                 <h4>🎯 核心机会</h4>
                 <p>{summary.get('key_opportunity', 'N/A')}</p>
             </div>
@@ -624,7 +624,7 @@ def display_predictions(predictions):
             """, unsafe_allow_html=True)
             
             st.markdown(f"""
-            <div class="agent-card" style="border-left-color: #ff9800;">
+            <div class="agent-card theme-strategy-card">
                 <h4>📋 整体策略</h4>
                 <p>{summary.get('strategy', 'N/A')}</p>
             </div>
@@ -729,7 +729,7 @@ def display_visualizations(predictions):
         })
         
         fig = px.bar(df, x='板块', y='信心度', color='类型',
-                     color_discrete_map={'看多': '#4caf50', '看空': '#f44336'},
+                     color_discrete_map={'看多': '#10b981', '看空': '#f43f5e'},
                      title='板块多空信心度对比')
         
         fig.update_layout(height=400)
@@ -766,7 +766,7 @@ def display_visualizations(predictions):
         })
         
         fig = px.scatter(df, x='板块', y='热度', size='热度', color='趋势',
-                        color_discrete_map={'最热': '#ff5722', '升温': '#ff9800'},
+                        color_discrete_map={'最热': '#22d3ee', '升温': '#8b5cf6'},
                         title='板块热度分布图')
         
         fig.update_layout(height=400)
