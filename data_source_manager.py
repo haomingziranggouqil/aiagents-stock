@@ -381,8 +381,24 @@ class DataSourceManager:
                     elif key == '流通市值':
                         info['circulating_market_cap'] = value
 
+                # 当接口返回结构变化或字段缺失时，用实时行情接口补齐名称
+                if info.get('name') == '未知':
+                    try:
+                        spot_df = ak.stock_zh_a_spot_em()
+                        row = spot_df[spot_df['代码'] == symbol]
+                        if not row.empty:
+                            spot_name = row.iloc[0].get('名称')
+                            if spot_name:
+                                info['name'] = spot_name
+                                print(f"[Akshare] ✅ 已通过实时行情补齐股票名称: {spot_name}")
+                    except Exception as se:
+                        print(f"[Akshare] ⚠️ 实时行情补齐名称失败: {se}")
+
                 # 保存到缓存
-                self._save_info_cache(symbol, info)
+                if info.get('name') != '未知':
+                    self._save_info_cache(symbol, info)
+                else:
+                    print("[缓存] 跳过保存未知股票名称，避免脏缓存")
                 print(f"[Akshare] ✅ 成功获取基本信息")
                 return info
         except Exception as e:
@@ -406,7 +422,8 @@ class DataSourceManager:
                     info['list_date'] = df.iloc[0]['list_date']
 
                     # 保存到缓存
-                    self._save_info_cache(symbol, info)
+                    if info.get('name') != '未知':
+                        self._save_info_cache(symbol, info)
                     print(f"[Tushare] ✅ 成功获取基本信息")
                     return info
             except Exception as e:

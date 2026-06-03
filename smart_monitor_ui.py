@@ -65,19 +65,18 @@ def smart_monitor_ui():
         </style>
         <div class="smart-monitor-title">
             <h1>🤖 AI盯盘 - AI决策交易系统</h1>
-            <p>参照 AlphaArena 的多智能体交易框架 · 深色科技仪表盘 · 支持实时分析 / 监控 / 持仓 / 历史</p>
+            <p>参照 AlphaArena 的多智能体交易框架 ·  支持实时分析 / 监控 / 持仓 / 历史</p>
             <div class="smart-monitor-chip-row">
-                <span class="smart-monitor-chip">🛰️ DeepSeek 驱动</span>
+                <span class="smart-monitor-chip">🛰️ 大模型驱动</span>
                 <span class="smart-monitor-chip">📈 交易时段感知</span>
                 <span class="smart-monitor-chip">🛡️ 风险控制优先</span>
-                <span class="smart-monitor-chip">🌙 深色科技风</span>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    st.caption("参照AlphaArena项目，基于DeepSeek AI的A股自动化交易系统")
+    st.caption("参照AlphaArena项目，基于AI的A股自动化分析系统")
     
     # 使用说明
     with st.expander("📖 快速使用指南", expanded=False):

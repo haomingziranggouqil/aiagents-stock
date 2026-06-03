@@ -51,7 +51,6 @@ def model_selector():
         "选择AI模型",
         options=list(model_options.keys()),
         format_func=lambda x: model_options[x],
-        help="DeepSeek Reasoner提供更强的推理能力，但响应时间可能更长"
     )
 
     return selected_model
@@ -75,7 +74,7 @@ TOP_NAV_ITEMS = [
     ('show_sector_strategy', '🎯 智策板块', 'AI驱动的板块轮动与热度分析'),
     ('show_longhubang', '🐉 智瞰龙虎', '龙虎榜深度分析与推荐'),
     ('show_portfolio', '📊 持仓分析', '投资组合分析与定时跟踪'),
-    ('show_smart_monitor', '🤖 AI盯盘', 'DeepSeek AI自动盯盘决策交易'),
+    ('show_smart_monitor', '🤖 AI盯盘', 'AI自动盯盘决策交易'),
     ('show_monitor', '📡 实时监测', '价格监控与预警提醒'),
     ('show_history', '📚 历史记录', '查看历史分析记录'),
     ('show_config', '⚙️ 环境配置', '系统设置与API配置'),
@@ -297,7 +296,7 @@ def display_dashboard_banner(api_key_status, selected_model, period):
             <div class="banner-grid">
                 <div>
                     <div class="banner-title">🛰️ 天心多AI智能体股票分析控制台</div>
-                    <div class="banner-subtitle">深色科技仪表盘 · 多智能体协同分析 · 统一监测与决策</div>
+                    <div class="banner-subtitle"> 多智能体协同分析 · 统一监测与决策</div>
                 </div>
                 <div class="chip-row">
                     <div class="tech-chip">🤖 {selected_model_label}</div>
@@ -310,7 +309,6 @@ def display_dashboard_banner(api_key_status, selected_model, period):
             <div class="status-bar">
                 <span class="status-pill">已监测股票 {monitored_count} 只</span>
                 <span class="status-pill">待处理通知 {pending_count} 条</span>
-                <span class="status-pill">主界面 / 板块 / 龙虎榜 / 盯盘统一风格</span>
             </div>
         </div>
         """,
@@ -1223,7 +1221,7 @@ def main():
 
     if analyze_button and stock_input:
         if not api_key_status:
-            st.error("❌ 请先配置 DeepSeek API Key")
+            st.error("❌ 请先配置 AI API Key")
             return
 
         # 检查是否至少选择了一位分析师
@@ -1905,7 +1903,10 @@ def run_stock_analysis(symbol, period):
 
 def display_stock_info(stock_info, indicators):
     """显示股票基本信息"""
-    st.subheader(f"📊 {stock_info.get('name', 'N/A')} ({stock_info.get('symbol', 'N/A')})")
+    symbol = stock_info.get('symbol', 'N/A')
+    raw_name = stock_info.get('name', 'N/A')
+    display_name = raw_name if raw_name not in ('未知', 'N/A', '', None) else f"股票{symbol}"
+    st.subheader(f"📊 {display_name} ({symbol})")
 
     # 基本信息卡片
     col1, col2, col3, col4, col5 = st.columns(5)
@@ -1980,6 +1981,10 @@ def display_stock_chart(stock_data, stock_info):
     """显示股票图表"""
     st.subheader("📈 股价走势图")
 
+    symbol = stock_info.get('symbol', 'N/A')
+    raw_name = stock_info.get('name', 'N/A')
+    display_name = raw_name if raw_name not in ('未知', 'N/A', '', None) else f"股票{symbol}"
+
     # 创建蜡烛图
     fig = go.Figure()
 
@@ -2038,7 +2043,7 @@ def display_stock_chart(stock_data, stock_info):
         ))
 
     fig.update_layout(
-        title=f"{stock_info.get('name', 'N/A')} 股价走势",
+        title=f"{display_name} 股价走势",
         xaxis_title="日期",
         yaxis_title="价格",
         paper_bgcolor='rgba(6, 11, 25, 0.92)',
@@ -2705,8 +2710,7 @@ def display_config_manager():
         st.session_state.temp_config = {key: info["value"] for key, info in config_info.items()}
 
     with tab1:
-        st.markdown("### DeepSeek API配置")
-        st.markdown("DeepSeek是系统的核心AI引擎，必须配置才能使用分析功能。")
+        st.markdown("### AI API配置")
         st.markdown("DeepSeek:https://api.deepseek.com/v1")
         st.markdown("硅基流动:https://api.siliconflow.cn/v1")
         st.markdown("火山引擎:https://ark.cn-beijing.volces.com/api/v3")
