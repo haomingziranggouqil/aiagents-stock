@@ -39,7 +39,7 @@ class SmartMonitorDataFetcher:
         
         if self.use_tdx:
             try:
-                from smart_monitor_tdx_data import SmartMonitorTDXDataFetcher
+                from modules.smart_monitor.tdx_data import SmartMonitorTDXDataFetcher
                 self.tdx_fetcher = SmartMonitorTDXDataFetcher(base_url=tdx_base_url)
                 self.logger.info(f"TDX数据源已启用: {tdx_base_url}")
             except Exception as e:

@@ -2,9 +2,9 @@ import streamlit as st
 from datetime import datetime
 from typing import Dict, List
 
-from monitor_db import monitor_db
-from monitor_service import monitor_service
-from notification_service import notification_service
+from modules.monitor.db import monitor_db
+from modules.monitor.service import monitor_service
+from core.notification_service import notification_service
 
 def display_monitor_panel():
     """显示监测面板"""

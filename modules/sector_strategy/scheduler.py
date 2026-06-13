@@ -7,9 +7,9 @@ import schedule
 import threading
 import time
 from datetime import datetime
-from sector_strategy_data import SectorStrategyDataFetcher
-from sector_strategy_engine import SectorStrategyEngine
-from notification_service import notification_service
+from modules.sector_strategy.data import SectorStrategyDataFetcher
+from modules.sector_strategy.engine import SectorStrategyEngine
+from core.notification_service import notification_service
 import json
 
 

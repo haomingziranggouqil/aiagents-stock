@@ -13,11 +13,11 @@ import time
 import base64
 import json
 
-from sector_strategy_data import SectorStrategyDataFetcher
-from sector_strategy_engine import SectorStrategyEngine
-from sector_strategy_pdf import SectorStrategyPDFGenerator
-from sector_strategy_db import SectorStrategyDatabase
-from sector_strategy_scheduler import sector_strategy_scheduler
+from modules.sector_strategy.data import SectorStrategyDataFetcher
+from modules.sector_strategy.engine import SectorStrategyEngine
+from modules.sector_strategy.pdf import SectorStrategyPDFGenerator
+from modules.sector_strategy.db import SectorStrategyDatabase
+from modules.sector_strategy.scheduler import sector_strategy_scheduler
 
 
 def _parse_json_field(value, default):
@@ -1137,7 +1137,7 @@ def check_email_config():
 def test_email_notification():
     """测试邮件通知"""
     try:
-        from notification_service import notification_service
+        from core.notification_service import notification_service
         
         # 使用notification_service的send_test_email方法
         success, message = notification_service.send_test_email()

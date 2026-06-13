@@ -3,9 +3,9 @@
 整合各智能体分析，生成板块多空/轮动/热度预测
 """
 
-from sector_strategy_agents import SectorStrategyAgents
-from sector_strategy_db import SectorStrategyDatabase
-from deepseek_client import DeepSeekClient
+from agents.sector_strategy_agents import SectorStrategyAgents
+from modules.sector_strategy.db import SectorStrategyDatabase
+from core.deepseek_client import DeepSeekClient
 from typing import Dict, Any
 import time
 import json

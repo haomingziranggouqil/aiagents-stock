@@ -1,35 +1,15 @@
 """
-资金流向数据获取模块（akshare版本）
-使用akshare的stock_individual_fund_flow接口获取个股资金流向
+资金流向数据获取模块
+优先使用akshare，东方财富被封时自动回退到问财(pywencai)
 """
 
 import pandas as pd
-import sys
-import io
 import warnings
 from datetime import datetime, timedelta
 import akshare as ak
-from data_source_manager import data_source_manager
+from core.data_source_manager import data_source_manager
 
 warnings.filterwarnings('ignore')
-
-# 设置标准输出编码为UTF-8（仅在命令行环境，避免streamlit冲突）
-def _setup_stdout_encoding():
-    """仅在命令行环境设置标准输出编码"""
-    if sys.platform == 'win32' and not hasattr(sys.stdout, '_original_stream'):
-        try:
-            # 检测是否在streamlit环境中
-            import streamlit
-            # 在streamlit中不修改stdout
-            return
-        except ImportError:
-            # 不在streamlit环境，可以安全修改
-            try:
-                sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='ignore')
-            except:
-                pass
-
-_setup_stdout_encoding()
 
 
 class FundFlowAkshareDataFetcher:
@@ -107,98 +87,160 @@ class FundFlowAkshareDataFetcher:
             return 'sz'
     
     def _get_individual_fund_flow(self, symbol, market):
-        """获取个股资金流向数据（支持akshare和tushare自动切换）"""
+        """获取个股资金流向数据（akshare → tushare → 问财 三级fallback）"""
+        # 方法1: akshare
+        result = self._try_akshare_fund_flow(symbol, market)
+        if result:
+            return result
+
+        # 方法2: tushare
+        result = self._try_tushare_fund_flow(symbol)
+        if result:
+            return result
+
+        # 方法3: 问财 fallback
+        result = self._try_pywencai_fund_flow(symbol)
+        if result:
+            return result
+
+        return None
+
+    def _try_akshare_fund_flow(self, symbol, market):
+        """通过akshare获取资金流向"""
         try:
-            # 优先使用akshare的stock_individual_fund_flow接口
             print(f"   [Akshare] 正在获取资金流向 (市场: {market})...")
-            
             df = ak.stock_individual_fund_flow(stock=symbol, market=market)
-            
-            if df is None or df.empty:
-                print(f"   [Akshare] 未找到资金流向数据，尝试备用数据源...")
-                
-                # akshare失败，尝试tushare
-                if data_source_manager.tushare_available:
-                    try:
-                        print(f"   [Tushare] 正在获取资金流向数据（备用数据源）...")
-                        ts_code = data_source_manager._convert_to_ts_code(symbol)
-                        
-                        # 计算日期范围（最近N个交易日）
-                        end_date = datetime.now().strftime('%Y%m%d')
-                        start_date = (datetime.now() - timedelta(days=self.days * 2)).strftime('%Y%m%d')
-                        
-                        # 获取资金流向数据
-                        df = data_source_manager.tushare_api.moneyflow(
-                            ts_code=ts_code,
-                            start_date=start_date,
-                            end_date=end_date
-                        )
-                        
-                        if df is not None and not df.empty:
-                            # 标准化列名以匹配akshare格式
-                            df = df.rename(columns={
-                                'trade_date': '日期',
-                                'buy_sm_amount': '小单买入',
-                                'sell_sm_amount': '小单卖出',
-                                'buy_md_amount': '中单买入',
-                                'sell_md_amount': '中单卖出',
-                                'buy_lg_amount': '大单买入',
-                                'sell_lg_amount': '大单卖出',
-                                'buy_elg_amount': '超大单买入',
-                                'sell_elg_amount': '超大单卖出',
-                                'net_mf_amount': '净额'
-                            })
-                            
-                            # 限制为最近N天
-                            df = df.head(self.days)
-                            print(f"   [Tushare] ✅ 成功获取 {len(df)} 条资金流向数据")
-                        else:
-                            print(f"   [Tushare] ❌ 未找到资金流向数据")
-                            return None
-                    except Exception as te:
-                        print(f"   [Tushare] ❌ 获取失败: {te}")
-                        return None
-                else:
-                    return None
-            
-            # akshare 返回的数据是按时间正序排列（从旧到新），所以使用 tail() 获取最近N天的数据
-            df = df.tail(self.days)
-            
-            # 按日期倒序排列，让最新的数据在前面
-            df = df.iloc[::-1].reset_index(drop=True)
-            
-            # 转换为字典列表
+            if df is not None and not df.empty:
+                return self._format_fund_flow_df(df, market)
+            print(f"   [Akshare] 未找到资金流向数据")
+        except Exception as e:
+            print(f"   [Akshare] ❌ 获取失败: {e}")
+        return None
+
+    def _try_tushare_fund_flow(self, symbol):
+        """通过tushare获取资金流向"""
+        if not data_source_manager.tushare_available:
+            return None
+        try:
+            print(f"   [Tushare] 正在获取资金流向数据...")
+            ts_code = data_source_manager._convert_to_ts_code(symbol)
+            end_date = datetime.now().strftime('%Y%m%d')
+            start_date = (datetime.now() - timedelta(days=self.days * 2)).strftime('%Y%m%d')
+
+            df = data_source_manager.tushare_api.moneyflow(
+                ts_code=ts_code, start_date=start_date, end_date=end_date
+            )
+            if df is not None and not df.empty:
+                df = df.rename(columns={
+                    'trade_date': '日期',
+                    'buy_sm_amount': '小单买入', 'sell_sm_amount': '小单卖出',
+                    'buy_md_amount': '中单买入', 'sell_md_amount': '中单卖出',
+                    'buy_lg_amount': '大单买入', 'sell_lg_amount': '大单卖出',
+                    'buy_elg_amount': '超大单买入', 'sell_elg_amount': '超大单卖出',
+                    'net_mf_amount': '净额'
+                })
+                df = df.head(self.days)
+                print(f"   [Tushare] ✅ 成功获取 {len(df)} 条资金流向数据")
+                market = self._get_market(symbol)
+                return self._format_fund_flow_df(df, market)
+        except Exception as e:
+            print(f"   [Tushare] ❌ 获取失败: {e}")
+        return None
+
+    def _try_pywencai_fund_flow(self, symbol):
+        """通过问财获取资金流向（fallback）"""
+        try:
+            import pywencai
+            print(f"   [问财] 正在获取资金流向数据...")
+            result = pywencai.get(question=f'{symbol}近30日资金流向', loop=True)
+
+            if result is None:
+                print(f"   [问财] ❌ 返回空数据")
+                return None
+
             data_list = []
-            for idx, row in df.iterrows():
-                item = {}
-                for col in df.columns:
-                    value = row.get(col)
-                    if value is None or (isinstance(value, float) and pd.isna(value)):
-                        continue
-                    try:
-                        # 保持数值类型
-                        if isinstance(value, (int, float)):
-                            item[col] = value
-                        else:
-                            item[col] = str(value)
-                    except:
-                        item[col] = "N/A"
-                if item:
-                    data_list.append(item)
-            
+
+            if isinstance(result, dict):
+                # 解析问财返回的字典结构
+                # 优先取"资金流入数据一览"
+                flow_data = result.get('资金流入数据一览', [])
+                if flow_data and isinstance(flow_data, list):
+                    for item in flow_data[:self.days]:
+                        day_data = {
+                            '日期': item.get('交易日期', ''),
+                        }
+                        # 计算主力净流入 = (主动买入大单+被动买入大单+主动买入特大单+被动买入特大单) 相关
+                        # 问财返回的是买入金额，需要构造可用的摘要
+                        big_buy = (item.get('主动买入大单金额', 0) or 0) + (item.get('被动买入大单金额', 0) or 0)
+                        big_sell = item.get('主动卖出大单金额', 0) or 0  # 如果有
+                        super_buy = (item.get('主动买入特大单金额', 0) or 0) + (item.get('被动买入特大单金额', 0) or 0)
+
+                        day_data['大单买入'] = big_buy
+                        day_data['超大单买入'] = super_buy
+                        day_data['中单买入'] = (item.get('主动买入中单金额', 0) or 0) + (item.get('被动买入中单金额', 0) or 0)
+                        day_data['小单买入'] = item.get('小单买入金额', 0) or 0
+                        data_list.append(day_data)
+
+                # 如果没有详细数据，取基本概况
+                if not data_list:
+                    overview = result.get('基本概况', [])
+                    if overview and isinstance(overview, list):
+                        item = overview[0]
+                        net_flow = item.get(next((k for k in item if '资金流向' in k), ''), 0)
+                        inflow = item.get(next((k for k in item if '资金流入' in k), ''), 0)
+                        outflow = item.get(next((k for k in item if '资金流出' in k), ''), 0)
+                        data_list.append({
+                            '日期': datetime.now().strftime('%Y%m%d'),
+                            '主力净流入-净额': net_flow,
+                            '区间流入': inflow,
+                            '区间流出': outflow,
+                        })
+
+            if not data_list:
+                print(f"   [问财] ❌ 无法解析资金流向数据")
+                return None
+
+            print(f"   [问财] ✅ 成功获取 {len(data_list)} 条资金流向数据")
+            market = self._get_market(symbol)
             return {
                 "data": data_list,
                 "days": len(data_list),
-                "columns": df.columns.tolist(),
+                "columns": list(data_list[0].keys()) if data_list else [],
                 "market": market,
+                "source": "问财",
                 "query_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
-            
         except Exception as e:
-            print(f"   获取资金流向数据异常: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
+            print(f"   [问财] ❌ 获取失败: {e}")
+        return None
+
+    def _format_fund_flow_df(self, df, market):
+        """将DataFrame格式化为标准返回结构"""
+        # 取最近N天并倒序
+        df = df.tail(self.days)
+        df = df.iloc[::-1].reset_index(drop=True)
+
+        data_list = []
+        for _, row in df.iterrows():
+            item = {}
+            for col in df.columns:
+                value = row.get(col)
+                if value is None or (isinstance(value, float) and pd.isna(value)):
+                    continue
+                if isinstance(value, (int, float)):
+                    item[col] = value
+                else:
+                    item[col] = str(value)
+            if item:
+                data_list.append(item)
+
+        return {
+            "data": data_list,
+            "days": len(data_list),
+            "columns": df.columns.tolist(),
+            "market": market,
+            "query_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
     
     def format_fund_flow_for_ai(self, data):
         """

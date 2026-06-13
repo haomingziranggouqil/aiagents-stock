@@ -7,10 +7,10 @@ import streamlit as st
 import os
 import logging
 
-from monitor_db import monitor_db
-from stock_data import StockDataFetcher
-from miniqmt_interface import miniqmt, get_miniqmt_status
-from notification_service import notification_service
+from modules.monitor.db import monitor_db
+from data.stock_data import StockDataFetcher
+from services.miniqmt_interface import miniqmt, get_miniqmt_status
+from core.notification_service import notification_service
 
 # 导入TDX数据源（如果可用）
 try:

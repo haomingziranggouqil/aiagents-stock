@@ -11,8 +11,8 @@ from datetime import datetime
 from typing import List, Dict
 import time
 
-from portfolio_manager import portfolio_manager
-from portfolio_scheduler import portfolio_scheduler
+from modules.portfolio.manager import portfolio_manager
+from modules.portfolio.scheduler import portfolio_scheduler
 
 
 def display_portfolio_manager():
@@ -336,7 +336,7 @@ def display_batch_analysis():
                 sync_result = None  # 初始化同步结果
                 if auto_sync:
                     with st.spinner("正在同步到监测列表..."):
-                        from monitor_db import monitor_db
+                        from modules.monitor.db import monitor_db
                         
                         # 准备同步数据
                         monitors_to_sync = []
@@ -412,7 +412,7 @@ def display_batch_analysis():
                 
                 # 发送通知
                 if send_notification:
-                    from notification_service import notification_service
+                    from core.notification_service import notification_service
                     notification_service.send_portfolio_analysis_notification(
                         result, 
                         sync_result if auto_sync else None

@@ -11,7 +11,7 @@ import time
 import logging
 import os
 from dotenv import load_dotenv
-from sector_strategy_db import SectorStrategyDatabase
+from modules.sector_strategy.db import SectorStrategyDatabase
 
 # 加载环境变量
 load_dotenv()

@@ -6,7 +6,7 @@ import os
 from typing import Dict, List
 import streamlit as st
 
-from monitor_db import monitor_db
+from modules.monitor.db import monitor_db
 
 class NotificationService:
     """通知服务"""

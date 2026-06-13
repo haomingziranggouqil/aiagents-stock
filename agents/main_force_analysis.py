@@ -7,10 +7,10 @@
 
 from typing import Dict, List, Tuple
 import pandas as pd
-from main_force_selector import main_force_selector
-from stock_data import StockDataFetcher
-from ai_agents import StockAnalysisAgents
-from deepseek_client import DeepSeekClient
+from modules.main_force.selector import main_force_selector
+from data.stock_data import StockDataFetcher
+from agents.ai_agents import StockAnalysisAgents
+from core.deepseek_client import DeepSeekClient
 import time
 import json
 

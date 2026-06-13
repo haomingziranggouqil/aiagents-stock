@@ -6,9 +6,9 @@
 
 import streamlit as st
 from datetime import datetime, timedelta
-from main_force_analysis import MainForceAnalyzer
-from main_force_pdf_generator import display_report_download_section
-from main_force_history_ui import display_batch_history
+from agents.main_force_analysis import MainForceAnalyzer
+from modules.main_force.pdf_generator import display_report_download_section
+from modules.main_force.history_ui import display_batch_history
 import pandas as pd
 
 def display_main_force_selector():
@@ -722,7 +722,7 @@ def run_main_force_batch_analysis():
         save_success = False
         save_error = None
         try:
-            from main_force_batch_db import batch_db
+            from modules.main_force.batch_db import batch_db
 
             # 调试信息
             print(f"\n{'='*60}")
@@ -959,7 +959,7 @@ def display_main_force_batch_results(batch_results):
                             pass
 
                     # 调用监测管理器添加
-                    from monitor_db import monitor_db
+                    from modules.monitor.db import monitor_db
 
                     try:
                         # 准备进场区间数据

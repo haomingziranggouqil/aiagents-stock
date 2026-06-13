@@ -9,7 +9,7 @@ import asyncio
 import io
 from markdown_it import MarkdownIt
 import yaml
-from pdf_browser_launcher import get_browser_launch_options
+from services.pdf_browser_launcher import get_browser_launch_options
 
 # 条件导入pyppeteer，添加异常处理
 try:

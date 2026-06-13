@@ -11,8 +11,8 @@ from datetime import datetime
 from typing import Optional, Callable
 import traceback
 
-from portfolio_manager import portfolio_manager
-from notification_service import NotificationService
+from modules.portfolio.manager import portfolio_manager
+from core.notification_service import NotificationService
 
 
 class PortfolioScheduler:

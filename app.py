@@ -11,20 +11,25 @@ from datetime import datetime
 import time
 import base64
 import os
+
+# 全局请求限速（必须在 akshare 等数据模块导入前安装）
+from core.request_throttle import install as install_throttle
+install_throttle()
+
 # 从新的配置文件导入model_options
 from model_config import model_options
 
-from stock_data import StockDataFetcher
-from ai_agents import StockAnalysisAgents
-from pdf_generator import display_pdf_export_section
-from database import db
-from monitor_manager import display_monitor_manager
-from monitor_service import monitor_service
-from config_manager import config_manager
-from main_force_ui import display_main_force_selector
-from sector_strategy_ui import display_sector_strategy
-from longhubang_ui import display_longhubang
-from smart_monitor_ui import smart_monitor_ui
+from data.stock_data import StockDataFetcher
+from agents.ai_agents import StockAnalysisAgents
+from services.pdf_generator import display_pdf_export_section
+from core.database import db
+from modules.monitor.manager import display_monitor_manager
+from modules.monitor.service import monitor_service
+from core.config_manager import config_manager
+from modules.main_force.ui import display_main_force_selector
+from modules.sector_strategy.ui import display_sector_strategy
+from modules.longhubang.ui import display_longhubang
+from modules.smart_monitor.ui import smart_monitor_ui
 import plotly.io as pio
 
 # 统一Plotly默认深色模板，保证各页面图表风格一致
@@ -278,7 +283,7 @@ def display_dashboard_banner(api_key_status, selected_model, period):
     selected_model_label = model_options.get(selected_model, selected_model)
 
     try:
-        from monitor_db import monitor_db
+        from modules.monitor.db import monitor_db
         monitored_count = len(monitor_db.get_monitored_stocks())
         pending_count = len(monitor_db.get_pending_notifications())
         record_count = db.get_record_count()
@@ -1021,7 +1026,7 @@ def main():
         st.markdown(f"**监测服务**: {monitor_status}")
 
         try:
-            from monitor_db import monitor_db
+            from modules.monitor.db import monitor_db
             stocks = monitor_db.get_monitored_stocks()
             notifications = monitor_db.get_pending_notifications()
             record_count = db.get_record_count()
@@ -1099,7 +1104,7 @@ def main():
 
     # 检查是否显示持仓分析
     if 'show_portfolio' in st.session_state and st.session_state.show_portfolio:
-        from portfolio_ui import display_portfolio_manager
+        from modules.portfolio.ui import display_portfolio_manager
         display_portfolio_manager()
         return
 
@@ -1428,7 +1433,7 @@ def analyze_single_stock_for_batch(symbol, period, enabled_analysts_config=None,
         enable_fundamental = enabled_analysts_config.get('fundamental', True)
         if enable_fundamental and fetcher._is_chinese_stock(symbol):
             try:
-                from quarterly_report_data import QuarterlyReportDataFetcher
+                from data.quarterly_report_data import QuarterlyReportDataFetcher
                 quarterly_fetcher = QuarterlyReportDataFetcher()
                 quarterly_data = quarterly_fetcher.get_quarterly_reports(symbol)
             except:
@@ -1443,7 +1448,7 @@ def analyze_single_stock_for_batch(symbol, period, enabled_analysts_config=None,
         fund_flow_data = None
         if enable_fund_flow and fetcher._is_chinese_stock(symbol):
             try:
-                from fund_flow_akshare import FundFlowAkshareDataFetcher
+                from data.fund_flow_akshare import FundFlowAkshareDataFetcher
                 fund_flow_fetcher = FundFlowAkshareDataFetcher()
                 fund_flow_data = fund_flow_fetcher.get_fund_flow_data(symbol)
             except:
@@ -1453,7 +1458,7 @@ def analyze_single_stock_for_batch(symbol, period, enabled_analysts_config=None,
         sentiment_data = None
         if enable_sentiment and fetcher._is_chinese_stock(symbol):
             try:
-                from market_sentiment_data import MarketSentimentDataFetcher
+                from data.market_sentiment_data import MarketSentimentDataFetcher
                 sentiment_fetcher = MarketSentimentDataFetcher()
                 sentiment_data = sentiment_fetcher.get_market_sentiment_data(symbol, stock_data)
             except:
@@ -1463,7 +1468,7 @@ def analyze_single_stock_for_batch(symbol, period, enabled_analysts_config=None,
         news_data = None
         if enable_news and fetcher._is_chinese_stock(symbol):
             try:
-                from qstock_news_data import QStockNewsDataFetcher
+                from data.qstock_news_data import QStockNewsDataFetcher
                 news_fetcher = QStockNewsDataFetcher()
                 news_data = news_fetcher.get_stock_news(symbol)
             except:
@@ -1704,7 +1709,7 @@ def run_stock_analysis(symbol, period):
         if enable_fundamental and fetcher._is_chinese_stock(symbol):
             status_text.text("📊 正在获取季报数据（akshare数据源）...")
             try:
-                from quarterly_report_data import QuarterlyReportDataFetcher
+                from data.quarterly_report_data import QuarterlyReportDataFetcher
                 quarterly_fetcher = QuarterlyReportDataFetcher()
                 quarterly_data = quarterly_fetcher.get_quarterly_reports(symbol)
                 if quarterly_data and quarterly_data.get('data_success'):
@@ -1731,7 +1736,7 @@ def run_stock_analysis(symbol, period):
         if enable_fund_flow and fetcher._is_chinese_stock(symbol):
             status_text.text("💰 正在获取资金流向数据（akshare数据源）...")
             try:
-                from fund_flow_akshare import FundFlowAkshareDataFetcher
+                from data.fund_flow_akshare import FundFlowAkshareDataFetcher
                 fund_flow_fetcher = FundFlowAkshareDataFetcher()
                 fund_flow_data = fund_flow_fetcher.get_fund_flow_data(symbol)
                 if fund_flow_data and fund_flow_data.get('data_success'):
@@ -1751,7 +1756,7 @@ def run_stock_analysis(symbol, period):
         if enable_sentiment and fetcher._is_chinese_stock(symbol):
             status_text.text("📊 正在获取市场情绪数据（ARBR等指标）...")
             try:
-                from market_sentiment_data import MarketSentimentDataFetcher
+                from data.market_sentiment_data import MarketSentimentDataFetcher
                 sentiment_fetcher = MarketSentimentDataFetcher()
                 sentiment_data = sentiment_fetcher.get_market_sentiment_data(symbol, stock_data)
                 if sentiment_data and sentiment_data.get('data_success'):
@@ -1770,7 +1775,7 @@ def run_stock_analysis(symbol, period):
         if enable_news and fetcher._is_chinese_stock(symbol):
             status_text.text("📰 正在获取新闻数据...")
             try:
-                from qstock_news_data import QStockNewsDataFetcher
+                from data.qstock_news_data import QStockNewsDataFetcher
                 news_fetcher = QStockNewsDataFetcher()
                 news_data = news_fetcher.get_stock_news(symbol)
                 if news_data and news_data.get('data_success'):
@@ -2421,7 +2426,7 @@ def display_add_to_monitor_dialog(record):
         rating = final_decision.get('rating', '买入')
 
         # 检查是否已经在监测列表中
-        from monitor_db import monitor_db
+        from modules.monitor.db import monitor_db
         existing_stocks = monitor_db.get_monitored_stocks()
         is_duplicate = any(stock['symbol'] == record['symbol'] for stock in existing_stocks)
 
@@ -2485,7 +2490,7 @@ def display_add_to_monitor_dialog(record):
                         st.balloons()
 
                         # 立即更新一次价格
-                        from monitor_service import monitor_service
+                        from modules.monitor.service import monitor_service
                         monitor_service.manual_update_stock(stock_id)
 
                         # 清理session state并跳转到监测页面
@@ -3000,7 +3005,7 @@ def display_config_manager():
 
                         try:
                             # 创建临时通知服务实例
-                            from notification_service import NotificationService
+                            from core.notification_service import NotificationService
                             temp_notification_service = NotificationService()
                             success, message = temp_notification_service.send_test_webhook()
 

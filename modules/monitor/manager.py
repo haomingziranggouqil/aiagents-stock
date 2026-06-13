@@ -13,11 +13,11 @@ from datetime import datetime, timedelta
 from typing import Dict, List
 import json
 
-from monitor_db import monitor_db
-from monitor_service import monitor_service
-from notification_service import notification_service
-from stock_data import StockDataFetcher
-from miniqmt_interface import miniqmt, get_miniqmt_status, QuantStrategyConfig
+from modules.monitor.db import monitor_db
+from modules.monitor.service import monitor_service
+from core.notification_service import notification_service
+from data.stock_data import StockDataFetcher
+from services.miniqmt_interface import miniqmt, get_miniqmt_status, QuantStrategyConfig
 
 def display_monitor_manager():
     """显示监测管理主页面"""

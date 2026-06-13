@@ -3,7 +3,7 @@
 包含四个专业分析师智能体
 """
 
-from deepseek_client import DeepSeekClient
+from core.deepseek_client import DeepSeekClient
 from typing import Dict, Any
 import time
 

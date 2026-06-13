@@ -1,10 +1,10 @@
 import openai
 import json
 from typing import Dict, List, Any, Optional
-import config
+import config  # 根目录 config.py
 from datetime import datetime
 import pytz
-from config_manager import config_manager
+from core.config_manager import config_manager
 
 class DeepSeekClient:
     """DeepSeek API客户端"""
@@ -181,7 +181,7 @@ class DeepSeekClient:
         quarterly_section = ""
         if quarterly_data and quarterly_data.get('data_success'):
             # 使用格式化的季报数据
-            from quarterly_report_data import QuarterlyReportDataFetcher
+            from data.quarterly_report_data import QuarterlyReportDataFetcher
             fetcher = QuarterlyReportDataFetcher()
             quarterly_section = f"""
 
@@ -289,7 +289,7 @@ class DeepSeekClient:
         fund_flow_section = ""
         if fund_flow_data and fund_flow_data.get('data_success'):
             # 使用格式化的资金流向数据
-            from fund_flow_akshare import FundFlowAkshareDataFetcher
+            from data.fund_flow_akshare import FundFlowAkshareDataFetcher
             fetcher = FundFlowAkshareDataFetcher()
             fund_flow_section = f"""
 

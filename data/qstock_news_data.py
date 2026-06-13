@@ -1,43 +1,28 @@
 """
 新闻数据获取模块
-使用akshare获取股票的最新新闻信息（替代qstock）
+使用东方财富搜索API + 财联社电报获取股票新闻
 """
 
-import pandas as pd
+import re
+import json
+import time
 import sys
-import io
 import warnings
-from datetime import datetime, timedelta
-import akshare as ak
+from datetime import datetime
+
+import requests
+import pandas as pd
 
 warnings.filterwarnings('ignore')
 
-# 设置标准输出编码为UTF-8（仅在命令行环境，避免streamlit冲突）
-def _setup_stdout_encoding():
-    """仅在命令行环境设置标准输出编码"""
-    if sys.platform == 'win32' and not hasattr(sys.stdout, '_original_stream'):
-        try:
-            # 检测是否在streamlit环境中
-            import streamlit
-            # 在streamlit中不修改stdout
-            return
-        except ImportError:
-            # 不在streamlit环境，可以安全修改
-            try:
-                sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='ignore')
-            except:
-                pass
-
-_setup_stdout_encoding()
-
 
 class QStockNewsDataFetcher:
-    """新闻数据获取类（使用akshare作为数据源）"""
-    
+    """新闻数据获取类（东方财富搜索API + 财联社电报）"""
+
     def __init__(self):
         self.max_items = 30  # 最多获取的新闻数量
         self.available = True
-        print("✓ 新闻数据获取器初始化成功（akshare数据源）")
+        print("✓ 新闻数据获取器初始化成功")
     
     def get_stock_news(self, symbol):
         """
@@ -89,218 +74,194 @@ class QStockNewsDataFetcher:
         return symbol.isdigit() and len(symbol) == 6
     
     def _get_news_data(self, symbol):
-        """获取新闻数据（使用akshare）"""
+        """获取新闻数据（直接请求东方财富搜索API + 财联社电报）"""
         try:
-            print(f"   使用 akshare 获取新闻...")
-            
+            print(f"   正在获取新闻...")
             news_items = []
-            
-            # 方法1: 尝试获取个股新闻（东方财富）
+
+            # 方法1: 东方财富搜索API（直接HTTP请求，绕过AKShare的pyarrow bug）
             try:
-                # stock_news_em(symbol="600519") - 东方财富个股新闻
-                df = ak.stock_news_em(symbol=symbol)
-                
-                if df is not None and not df.empty:
-                    print(f"   ✓ 从东方财富获取到 {len(df)} 条新闻")
-                    
-                    # 处理DataFrame，提取新闻
-                    for idx, row in df.head(self.max_items).iterrows():
-                        item = {'source': '东方财富'}
-                        
-                        # 提取所有列
-                        for col in df.columns:
-                            value = row.get(col)
-                            
-                            # 跳过空值
-                            if value is None or (isinstance(value, float) and pd.isna(value)):
-                                continue
-                            
-                            # 保存字段
-                            try:
-                                item[col] = str(value)
-                            except:
-                                item[col] = "无法解析"
-                        
-                        if len(item) > 1:  # 如果有数据才添加
-                            news_items.append(item)
-            
+                items = self._fetch_eastmoney_news(symbol)
+                if items:
+                    print(f"   ✓ 从东方财富获取到 {len(items)} 条新闻")
+                    news_items.extend(items)
             except Exception as e:
                 print(f"   ⚠ 从东方财富获取失败: {e}")
-            
-            # 方法2: 如果没有获取到，尝试获取新浪财经新闻
-            if not news_items:
-                try:
-                    # stock_zh_a_spot_em() - 获取股票信息，包含代码和名称
-                    df_info = ak.stock_zh_a_spot_em()
-                    
-                    # 查找股票名称
-                    stock_name = None
-                    if df_info is not None and not df_info.empty:
-                        match = df_info[df_info['代码'] == symbol]
-                        if not match.empty:
-                            stock_name = match.iloc[0]['名称']
-                            print(f"   找到股票名称: {stock_name}")
-                    
-                    # 使用股票名称搜索新闻
-                    if stock_name:
-                        # stock_news_sina - 新浪财经新闻
-                        try:
-                            df = ak.stock_news_sina(symbol=stock_name)
-                            if df is not None and not df.empty:
-                                print(f"   ✓ 从新浪财经获取到 {len(df)} 条新闻")
-                                
-                                for idx, row in df.head(self.max_items).iterrows():
-                                    item = {'source': '新浪财经'}
-                                    
-                                    for col in df.columns:
-                                        value = row.get(col)
-                                        if value is None or (isinstance(value, float) and pd.isna(value)):
-                                            continue
-                                        try:
-                                            item[col] = str(value)
-                                        except:
-                                            item[col] = "无法解析"
-                                    
-                                    if len(item) > 1:
-                                        news_items.append(item)
-                        except:
-                            pass
-                
-                except Exception as e:
-                    print(f"   ⚠ 从新浪财经获取失败: {e}")
-            
-            # 方法3: 尝试获取财联社电报
+
+            # 方法2: 财联社电报（通过AKShare，筛选相关内容）
             if not news_items or len(news_items) < 5:
                 try:
-                    # stock_news_cls() - 财联社电报
+                    import akshare as ak
                     df = ak.stock_news_cls()
-                    
                     if df is not None and not df.empty:
-                        # 筛选包含股票代码或名称的新闻
-                        df_filtered = df[
-                            df['内容'].str.contains(symbol, na=False) |
-                            df['标题'].str.contains(symbol, na=False)
-                        ]
-                        
+                        # 获取股票名称用于匹配
+                        stock_name = self._get_stock_name(symbol)
+                        keywords = [symbol]
+                        if stock_name:
+                            keywords.append(stock_name)
+
+                        mask = pd.Series([False] * len(df))
+                        for kw in keywords:
+                            for col in ['内容', '标题']:
+                                if col in df.columns:
+                                    mask |= df[col].str.contains(kw, na=False)
+
+                        df_filtered = df[mask]
                         if not df_filtered.empty:
                             print(f"   ✓ 从财联社获取到 {len(df_filtered)} 条相关新闻")
-                            
-                            for idx, row in df_filtered.head(self.max_items - len(news_items)).iterrows():
+                            for _, row in df_filtered.head(self.max_items - len(news_items)).iterrows():
                                 item = {'source': '财联社'}
-                                
                                 for col in df_filtered.columns:
                                     value = row.get(col)
-                                    if value is None or (isinstance(value, float) and pd.isna(value)):
-                                        continue
-                                    try:
+                                    if value is not None and not (isinstance(value, float) and pd.isna(value)):
                                         item[col] = str(value)
-                                    except:
-                                        item[col] = "无法解析"
-                                
                                 if len(item) > 1:
                                     news_items.append(item)
-                
                 except Exception as e:
                     print(f"   ⚠ 从财联社获取失败: {e}")
-            
+
             if not news_items:
                 print(f"   未找到股票 {symbol} 的新闻")
                 return None
-            
-            # 限制数量
+
             news_items = news_items[:self.max_items]
-            
             return {
                 "items": news_items,
                 "count": len(news_items),
                 "query_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "date_range": "最近新闻"
             }
-            
+
         except Exception as e:
             print(f"   获取新闻数据异常: {e}")
-            import traceback
-            traceback.print_exc()
             return None
+
+    def _fetch_eastmoney_news(self, symbol, page_size=20):
+        """直接请求东方财富搜索API获取个股新闻"""
+        url = 'https://search-api-web.eastmoney.com/search/jsonp'
+        cb = f'jQuery351_{int(time.time() * 1000)}'
+        inner_param = {
+            'uid': '',
+            'keyword': symbol,
+            'type': ['cmsArticleWebOld'],
+            'client': 'web',
+            'clientType': 'web',
+            'clientVersion': 'curr',
+            'param': {
+                'cmsArticleWebOld': {
+                    'searchScope': 'default',
+                    'sort': 'default',
+                    'pageIndex': 1,
+                    'pageSize': page_size,
+                    'preTag': '<em>',
+                    'postTag': '</em>',
+                }
+            },
+        }
+        params = {
+            'cb': cb,
+            'param': json.dumps(inner_param, ensure_ascii=False),
+            '_': str(int(time.time() * 1000)),
+        }
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': f'https://so.eastmoney.com/news/s?keyword={symbol}',
+        }
+        r = requests.get(url, params=params, headers=headers, timeout=10)
+        r.raise_for_status()
+
+        # 解析JSONP响应
+        text = r.text
+        json_str = text[text.index('(') + 1: text.rindex(')')]
+        data = json.loads(json_str)
+        raw_items = data.get('result', {}).get('cmsArticleWebOld', [])
+
+        # 用Python re清理HTML标签（绕过pyarrow正则bug）
+        results = []
+        for item in raw_items:
+            title = re.sub(r'</?em>', '', item.get('title', ''))
+            content = re.sub(r'</?em>', '', item.get('content', ''))
+            content = content.replace('　', '').replace('\r\n', ' ')
+            results.append({
+                'source': '东方财富',
+                '新闻标题': title,
+                '新闻内容': content[:500] if len(content) > 500 else content,
+                '发布时间': item.get('date', ''),
+                '文章来源': item.get('mediaName', ''),
+                '新闻链接': f"http://finance.eastmoney.com/a/{item.get('code', '')}.html",
+            })
+        return results
+
+    def _get_stock_name(self, symbol):
+        """通过AKShare获取股票名称"""
+        try:
+            import akshare as ak
+            df = ak.stock_zh_a_spot_em()
+            if df is not None and not df.empty:
+                match = df[df['代码'] == symbol]
+                if not match.empty:
+                    return match.iloc[0]['名称']
+        except Exception:
+            pass
+        return None
     
     def format_news_for_ai(self, data):
-        """
-        将新闻数据格式化为适合AI阅读的文本
-        """
+        """将新闻数据格式化为适合AI阅读的文本"""
         if not data or not data.get("data_success"):
             return "未能获取新闻数据"
-        
+
         text_parts = []
-        
-        # 新闻数据
+
         if data.get("news_data"):
             news_data = data["news_data"]
             text_parts.append(f"""
-【最新新闻 - akshare数据源】
+【最新新闻】
 查询时间：{news_data.get('query_time', 'N/A')}
-时间范围：{news_data.get('date_range', 'N/A')}
 新闻数量：{news_data.get('count', 0)}条
 
 """)
-            
+
             for idx, item in enumerate(news_data.get('items', []), 1):
                 text_parts.append(f"新闻 {idx}:")
-                
-                # 优先显示的字段
-                priority_fields = ['title', 'date', 'time', 'source', 'content', 'url']
-                
-                # 先显示优先字段
+
+                # 优先字段
+                priority_fields = ['新闻标题', '发布时间', '文章来源', '新闻内容', '新闻链接']
                 for field in priority_fields:
                     if field in item:
                         value = item[field]
-                        # 限制content长度
-                        if field == 'content' and len(str(value)) > 500:
+                        if field == '新闻内容' and len(str(value)) > 500:
                             value = str(value)[:500] + "..."
                         text_parts.append(f"  {field}: {value}")
-                
-                # 再显示其他字段
+
+                # 其他字段
                 for key, value in item.items():
                     if key not in priority_fields and key != 'source':
-                        # 跳过过长的字段
                         if len(str(value)) > 300:
                             value = str(value)[:300] + "..."
                         text_parts.append(f"  {key}: {value}")
-                
-                text_parts.append("")  # 空行分隔
-        
+
+                text_parts.append("")
+
         return "\n".join(text_parts)
 
 
-# 测试函数
+# 测试
 if __name__ == "__main__":
-    print("测试新闻数据获取（akshare数据源）...")
-    print("="*60)
-    
+    print("测试新闻数据获取...")
+    print("=" * 60)
+
     fetcher = QStockNewsDataFetcher()
-    
-    if not fetcher.available:
-        print("❌ 新闻数据获取器不可用")
-        sys.exit(1)
-    
-    # 测试股票
-    test_symbols = ["000001", "600519"]  # 平安银行、贵州茅台
-    
-    for symbol in test_symbols:
-        print(f"\n{'='*60}")
-        print(f"正在测试股票: {symbol}")
-        print(f"{'='*60}\n")
-        
+
+    for symbol in ["600519", "000001"]:
+        print(f"\n{'=' * 60}")
+        print(f"测试股票: {symbol}")
+        print(f"{'=' * 60}\n")
+
         data = fetcher.get_stock_news(symbol)
-        
+
         if data.get("data_success"):
-            print("\n" + "="*60)
-            print("新闻数据获取成功！")
-            print("="*60)
-            
-            formatted_text = fetcher.format_news_for_ai(data)
-            print(formatted_text)
+            formatted = fetcher.format_news_for_ai(data)
+            print(formatted[:1000])
         else:
-            print(f"\n获取失败: {data.get('error', '未知错误')}")
-        
-        print("\n")
+            print(f"获取失败: {data.get('error', '未知错误')}")
 

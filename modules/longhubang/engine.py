@@ -3,10 +3,10 @@
 整合数据获取、AI分析、结果生成的核心引擎
 """
 
-from longhubang_data import LonghubangDataFetcher
-from longhubang_db import LonghubangDatabase
-from longhubang_agents import LonghubangAgents
-from longhubang_scoring import LonghubangScoring
+from modules.longhubang.data import LonghubangDataFetcher
+from modules.longhubang.db import LonghubangDatabase
+from agents.longhubang_agents import LonghubangAgents
+from modules.longhubang.scoring import LonghubangScoring
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import time

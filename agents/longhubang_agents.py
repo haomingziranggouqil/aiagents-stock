@@ -3,7 +3,7 @@
 专注于龙虎榜数据的多维度分析
 """
 
-from deepseek_client import DeepSeekClient
+from core.deepseek_client import DeepSeekClient
 from typing import Dict, Any, List
 import time
 

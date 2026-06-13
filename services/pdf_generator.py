@@ -13,7 +13,7 @@ import os
 import asyncio
 from markdown_it import MarkdownIt
 import yaml
-from pdf_browser_launcher import get_browser_launch_options
+from services.pdf_browser_launcher import get_browser_launch_options
 
 # 条件导入streamlit，只在需要时导入
 try:

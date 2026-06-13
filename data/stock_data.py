@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import requests
 import json
 import pywencai
-from data_source_manager import data_source_manager
+from core.data_source_manager import data_source_manager
 
 class StockDataFetcher:
     """股票数据获取类"""
@@ -846,7 +846,7 @@ class StockDataFetcher:
                 }
             
             # 使用风险数据获取器
-            from risk_data_fetcher import RiskDataFetcher
+            from data.risk_data_fetcher import RiskDataFetcher
             fetcher = RiskDataFetcher()
             risk_data = fetcher.get_risk_data(symbol)
             

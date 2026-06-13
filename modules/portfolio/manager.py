@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 # 导入必要的模块
-from portfolio_db import portfolio_db
+from modules.portfolio.db import portfolio_db
 
 
 class PortfolioManager:

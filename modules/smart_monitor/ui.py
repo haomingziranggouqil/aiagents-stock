@@ -8,9 +8,9 @@ import os
 from typing import Dict
 from dotenv import load_dotenv
 
-from smart_monitor_engine import SmartMonitorEngine
-from smart_monitor_db import SmartMonitorDB
-from config_manager import config_manager  # 使用主程序的配置管理器
+from modules.smart_monitor.engine import SmartMonitorEngine
+from modules.smart_monitor.db import SmartMonitorDB
+from core.config_manager import config_manager  # 使用主程序的配置管理器
 
 
 # 加载环境变量
@@ -808,7 +808,7 @@ def _render_task_kline_and_decisions(task: Dict, db: SmartMonitorDB, engine):
         db: 数据库实例
         engine: 监控引擎实例
     """
-    from smart_monitor_kline import SmartMonitorKline
+    from modules.smart_monitor.kline import SmartMonitorKline
     from smart_monitor_data import SmartMonitorDataFetcher
     
     stock_code = task['stock_code']

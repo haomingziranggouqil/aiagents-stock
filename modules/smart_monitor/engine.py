@@ -9,12 +9,12 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import threading
 
-from smart_monitor_deepseek import SmartMonitorDeepSeek
-from smart_monitor_data import SmartMonitorDataFetcher
-from smart_monitor_qmt import SmartMonitorQMT, SmartMonitorQMTSimulator
-from smart_monitor_db import SmartMonitorDB
-from notification_service import notification_service  # 复用主程序的通知服务
-from config_manager import config_manager  # 复用主程序的配置管理器
+from modules.smart_monitor.deepseek import SmartMonitorDeepSeek
+from modules.smart_monitor.data import SmartMonitorDataFetcher
+from modules.smart_monitor.qmt import SmartMonitorQMT, SmartMonitorQMTSimulator
+from modules.smart_monitor.db import SmartMonitorDB
+from core.notification_service import notification_service  # 复用主程序的通知服务
+from core.config_manager import config_manager  # 复用主程序的配置管理器
 
 
 class SmartMonitorEngine:

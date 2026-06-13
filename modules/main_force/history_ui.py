@@ -7,7 +7,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from main_force_batch_db import batch_db
+from modules.main_force.batch_db import batch_db
 
 
 def display_batch_history():
