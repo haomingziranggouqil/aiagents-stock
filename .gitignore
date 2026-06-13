@@ -1,12 +1,25 @@
-/*.rar
-/test_akshare.py
-/test_fixed.py
-/test_pdf_export.py
-/test_pe_pb.py
-/venv
-/__pycache__
-# 环境变量文件
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+
+# 环境变量
 .env
-/.cursor
-/openspec
+
+# 数据库文件（运行时生成）
+data_db/*.db
+
+# IDE
+.cursor/
+.trae/
+.vscode/
+
+# 构建产物
+*.rar
 TradEnv/
+openspec/
+
+# 测试文件
+test_*.py
+test_*.pdf
