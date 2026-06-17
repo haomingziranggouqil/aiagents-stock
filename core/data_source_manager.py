@@ -337,6 +337,51 @@ class DataSourceManager:
         print("❌ 所有数据源均获取失败且无缓存数据")
         return None
 
+    def _get_basic_info_tencent(self, symbol):
+        """通过腾讯实时行情接口获取基本信息（名称/价格/涨跌幅/PE/PB/市值）
+
+        腾讯接口 https://qt.gtimg.cn/q=<code> 返回以 ~ 分隔的固定字段，
+        IP不受东方财富封锁影响，作为基本信息的首选数据源。
+        """
+        try:
+            import requests
+
+            tx_code = self._convert_to_tx_code(symbol)
+            resp = requests.get(f'https://qt.gtimg.cn/q={tx_code}', timeout=8)
+            resp.encoding = 'gbk'
+            text = resp.text.strip()
+            if '="' not in text:
+                return None
+
+            fields = text.split('"')[1].split('~')
+            if len(fields) < 47 or not fields[1]:
+                return None
+
+            def _to_float(idx, lo=None, hi=None):
+                try:
+                    val = float(fields[idx])
+                    if lo is not None and val <= lo:
+                        return 'N/A'
+                    if hi is not None and val > hi:
+                        return 'N/A'
+                    return val
+                except (ValueError, IndexError):
+                    return 'N/A'
+
+            info = {'symbol': symbol, 'name': fields[1]}
+            info['current_price'] = _to_float(3)
+            info['change_percent'] = _to_float(32)
+            info['pe_ratio'] = _to_float(39, lo=0, hi=1000)
+            info['pb_ratio'] = _to_float(46, lo=0, hi=100)
+            # 腾讯返回总市值单位为亿元，转换为元以与其它数据源保持一致
+            total_mv = _to_float(44, lo=0)
+            info['market_cap'] = total_mv * 1e8 if isinstance(total_mv, float) else 'N/A'
+            print(f"[腾讯] ✅ 成功获取基本信息: {fields[1]}")
+            return info
+        except Exception as e:
+            print(f"[腾讯] ❌ 获取基本信息失败: {e}")
+            return None
+
     def get_stock_basic_info(self, symbol):
         """
         获取股票基本信息（优先腾讯，失败时使用tushare，最后使用本地缓存）
@@ -350,8 +395,7 @@ class DataSourceManager:
         info = {
             "symbol": symbol,
             "name": "未知",
-            "industry": "未知",
-            "market": "未知"
+            "industry": "未知"
         }
 
         # 1. 尝试从缓存获取
@@ -360,7 +404,14 @@ class DataSourceManager:
             print(f"[缓存] ✅ 使用缓存的基本信息")
             return cached_info
 
-        # 2. 尝试使用akshare东方财富接口（基本信息腾讯接口不支持）
+        # 2. 优先使用腾讯实时行情接口（东方财富接口的IP常被封，腾讯接口可用）
+        tx_info = self._get_basic_info_tencent(symbol)
+        if tx_info and tx_info.get('name') != '未知':
+            info.update(tx_info)
+            self._save_info_cache(symbol, info)
+            return info
+
+        # 3. 尝试使用akshare东方财富接口（基本信息腾讯接口不支持）
         try:
             import akshare as ak
             print(f"[Akshare] 正在获取 {symbol} 的基本信息...")
@@ -405,7 +456,7 @@ class DataSourceManager:
         except Exception as e:
             print(f"[Akshare] ❌ 获取失败: {e}")
 
-        # 3. akshare失败，尝试tushare
+        # 4. akshare失败，尝试tushare
         if self.tushare_available:
             try:
                 print(f"[Tushare] 正在获取 {symbol} 的基本信息（备用数据源）...")

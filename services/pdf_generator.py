@@ -8,6 +8,7 @@ PDF报告生成器
 import base64
 from datetime import datetime
 import io
+import re
 import tempfile
 import os
 import asyncio
@@ -38,11 +39,36 @@ except (ImportError, OSError) as e:
     has_pyppeteer = False
     print(f"pyppeteer导入失败，将使用reportlab作为备选: {e}")
 
+# 匹配emoji及常见符号区段（杂项符号、补充符号、旗帜、箭头等）
+_EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001F300-\U0001FAFF"  # 杂项符号与象形文字、补充符号、扩展A
+    "\U00002600-\U000027BF"  # 杂项符号、装饰符号
+    "\U0001F000-\U0001F0FF"  # 麻将、扑克
+    "\U00002B00-\U00002BFF"  # 杂项符号箭头
+    "\U0000FE00-\U0000FE0F"  # 变体选择符
+    "\U0001F1E6-\U0001F1FF"  # 区域指示符（旗帜）
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def _strip_emoji(text):
+    """移除文本中的emoji，避免在缺少emoji字体的环境中渲染成空心方框"""
+    if not text:
+        return text
+    return _EMOJI_PATTERN.sub("", str(text))
+
+
 async def markdown_to_pdf_browser(markdown_content, output_path):
     """使用无头浏览器将Markdown转换为PDF"""
     # 将Markdown转换为HTML
-    md = MarkdownIt()
-    html_content = md.render(markdown_content)
+    # 默认的commonmark预设不支持表格，需要手动启用table/strikethrough规则，
+    # 否则报告里的 | 项目 | 值 | 表格会原样输出为纯文本
+    md = MarkdownIt().enable('table').enable('strikethrough')
+    # 系统未安装彩色emoji字体，emoji会渲染成空心方框（豆腐块）。
+    # 在PDF渲染前去掉emoji，正文内容不受影响。
+    html_content = md.render(_strip_emoji(markdown_content))
     
     # 完整的HTML结构
     full_html = f"""
@@ -580,7 +606,7 @@ def generate_markdown_report(stock_info, agents_results, discussion_result, fina
 
 ---
 
-## 📊 股票基本信息
+## 股票基本信息
 
 | 项目 | 值 |
 |------|-----|
@@ -596,19 +622,19 @@ def generate_markdown_report(stock_info, agents_results, discussion_result, fina
 
 ---
 
-## 🔍 各分析师详细分析
+## 各分析师详细分析
 
 """
 
     # 添加各分析师的分析结果
     agent_names = {
-        'technical': '📈 技术分析师',
-        'fundamental': '📊 基本面分析师',
-        'fund_flow': '💰 资金面分析师',
-        'risk_management': '⚠️ 风险管理师',
-        'market_sentiment': '📈 市场情绪分析师'
+        'technical': '技术分析师',
+        'fundamental': '基本面分析师',
+        'fund_flow': '资金面分析师',
+        'risk_management': '风险管理师',
+        'market_sentiment': '市场情绪分析师'
     }
-    
+
     for agent_key, agent_name in agent_names.items():
         if agent_key in agents_results:
             agent_result = agents_results[agent_key]
@@ -616,7 +642,7 @@ def generate_markdown_report(stock_info, agents_results, discussion_result, fina
                 analysis_text = agent_result.get('analysis', '暂无分析')
             else:
                 analysis_text = str(agent_result)
-            
+
             markdown_content += f"""
 ### {agent_name}
 
@@ -628,13 +654,13 @@ def generate_markdown_report(stock_info, agents_results, discussion_result, fina
 
     # 添加团队讨论结果
     markdown_content += f"""
-## 🤝 团队综合讨论
+## 团队综合讨论
 
 {discussion_result}
 
 ---
 
-## 📋 最终投资决策
+## 最终投资决策
 
 """
     
@@ -671,7 +697,7 @@ def generate_markdown_report(stock_info, agents_results, discussion_result, fina
 
 ---
 
-## 📝 免责声明
+## 免责声明
 
 本报告由AI系统生成，仅供参考，不构成投资建议。投资有风险，入市需谨慎。请在做出投资决策前咨询专业的投资顾问。
 

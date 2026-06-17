@@ -84,14 +84,16 @@ class StockDataFetcher:
                 "exchange": "上海/深圳证券交易所"
             }
             
-            # 先尝试使用数据源管理器获取基本信息
+            # 先尝试使用数据源管理器获取基本信息（优先腾讯，避开被封的东方财富IP）
             basic_info = self.data_source_manager.get_stock_basic_info(symbol)
             if basic_info:
                 info.update(basic_info)
-            
-            # 方法1: 尝试获取个股详细信息（akshare）
+
+            # 方法1: 若数据源管理器未拿到名称，再尝试东方财富个股详情（akshare）
+            # 腾讯已成功时跳过，避免每次都打一条东方财富连接失败日志
+            need_em_detail = info.get('name') in ('未知', 'N/A', '', None)
             try:
-                stock_info = ak.stock_individual_info_em(symbol=symbol)
+                stock_info = ak.stock_individual_info_em(symbol=symbol) if need_em_detail else None
                 if stock_info is not None and not stock_info.empty:
                     for _, row in stock_info.iterrows():
                         key = row['item']
