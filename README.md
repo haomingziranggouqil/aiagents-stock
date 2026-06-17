@@ -134,9 +134,3 @@ docker-compose up -d
 ## 📄 许可证
 
 MIT License
-
----
-
-欢迎提交 Issue 和 PR！联系邮箱：ws3101001@126.com
-
-<img width="300" alt="微信群" src="https://www.sd-hn.cn/img/2wm1104.png" />
