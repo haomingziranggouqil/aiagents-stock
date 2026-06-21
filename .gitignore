@@ -9,6 +9,8 @@ venv/
 
 # 数据库文件（运行时生成）
 data_db/*.db
+# 会话签名密钥（运行时生成，不可泄露）
+data_db/session_secret.key
 
 # IDE
 .cursor/

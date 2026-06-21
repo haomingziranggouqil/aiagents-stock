@@ -1,7 +1,14 @@
 [theme]
-base = "light"
+# 与app.py自定义CSS的深色风格保持一致，避免下拉弹出列表用浅色主题导致浅底浅字看不清
+base = "dark"
+backgroundColor = "#050814"
+secondaryBackgroundColor = "#0b1224"
+textColor = "#e2ecff"
+primaryColor = "#22d3ee"
 
 [server]
 port = 8503
-address = "127.0.0.1"
+address = "0.0.0.0"
 folderWatchBlacklist = ["venv", "data_db", ".git"]
+# 公网访问：开启XSRF保护防跨站请求伪造
+enableXsrfProtection = true

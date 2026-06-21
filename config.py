@@ -11,6 +11,9 @@ DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"
 # 其他配置
 TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN", "")
 
+# Web访问登录：用户凭证存于独立数据库 data_db/users.db（见 core/user_store.py）
+# 用 manage_users.py 管理账号；不再使用环境变量存储账号密码。
+
 # 股票数据源配置
 DEFAULT_PERIOD = "1y"  # 默认获取1年数据
 DEFAULT_INTERVAL = "1d"  # 默认日线数据

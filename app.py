@@ -45,6 +45,83 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
+_AUTH_COOKIE_NAME = "tc_auth"
+
+
+def _init_cookie_manager():
+    """每次脚本运行实例化一次cookie管理器并存入session_state。
+
+    注意：必须每次运行都重新实例化（其 __init__ 会重新向前端读取cookie），
+    不能跨run复用旧对象，否则会一直读到首次的空值，导致新标签无法免登录。
+    一次运行只调用一次（在main()顶部），登录门与登出按钮共用该实例。
+    """
+    import extra_streamlit_components as stx
+    mgr = stx.CookieManager(key="auth_cookie_mgr")
+    st.session_state["_cookie_mgr"] = mgr
+    return mgr
+
+
+def check_login():
+    """登录门：公网部署时拦截未授权访问，支持多用户 + 跨标签免登录。
+
+    用户凭证存于独立SQLite数据库（data_db/users.db），密码加盐哈希。
+    登录态通过签名token写入浏览器cookie，新标签/刷新可自动恢复登录。
+    数据库中无任何用户则不启用登录（内网信任环境）。
+    """
+    try:
+        from core.user_store import user_store
+        from core import session_token
+    except Exception:
+        return True
+
+    # 未配置任何用户 -> 不启用登录
+    if user_store.count() == 0:
+        return True
+
+    cookie_manager = st.session_state.get("_cookie_mgr") or _init_cookie_manager()
+
+    # 本会话已登录
+    if st.session_state.get("login_ok"):
+        return True
+
+    # 尝试用cookie中的token恢复登录（跨标签/刷新免登录）
+    token = cookie_manager.get(_AUTH_COOKIE_NAME)
+    if token:
+        username = session_token.verify_token(token)
+        if username and user_store.user_exists(username):
+            st.session_state.login_ok = True
+            st.session_state.login_username = username
+            return True
+
+    st.markdown("## 🔒 请登录")
+    username = st.text_input("用户名", key="login_user")
+    password = st.text_input("密码", type="password", key="login_pwd")
+    if st.button("登录"):
+        if user_store.verify_user(username, password):
+            st.session_state.login_ok = True
+            st.session_state.login_username = username
+            # 不在会话里保留明文密码
+            st.session_state.pop("login_pwd", None)
+            # 签发token并写入cookie，供其它标签免登录（sameSite=lax更兼容）
+            import datetime as _dt
+            token = session_token.issue_token(username)
+            cookie_manager.set(
+                _AUTH_COOKIE_NAME,
+                token,
+                expires_at=_dt.datetime.now() + _dt.timedelta(seconds=session_token.DEFAULT_TTL),
+                same_site="lax",
+                key="set_auth_cookie",
+            )
+            # 给前端写cookie留出时间，不立即rerun
+            import time as _t
+            _t.sleep(0.5)
+            st.rerun()
+        else:
+            st.error("❌ 用户名或密码错误")
+    st.stop()
+
+
 # 模型选择器
 def model_selector():
     """模型选择器"""
@@ -910,6 +987,25 @@ st.markdown("""
         color: var(--text-primary) !important;
     }
 
+    /* 下拉框点开后的弹出列表（Streamlit渲染到DOM末尾的portal，需单独着色） */
+    ul[data-baseweb="menu"],
+    div[data-baseweb="popover"] ul,
+    div[data-baseweb="popover"] {
+        background: var(--bg-elevated) !important;
+    }
+    ul[data-baseweb="menu"] li,
+    div[data-baseweb="popover"] li[role="option"] {
+        background: var(--bg-elevated) !important;
+        color: var(--text-primary) !important;
+    }
+    /* 鼠标悬停/高亮的选项 */
+    ul[data-baseweb="menu"] li:hover,
+    div[data-baseweb="popover"] li[role="option"]:hover,
+    li[aria-selected="true"] {
+        background: rgba(34, 211, 238, 0.18) !important;
+        color: #ffffff !important;
+    }
+
     .stProgress > div > div > div > div {
         background: linear-gradient(90deg, #22d3ee 0%, #8b5cf6 100%);
     }
@@ -978,6 +1074,12 @@ def load_latest_analysis_from_db():
     return False
 
 def main():
+    # 每次运行先实例化cookie管理器（须在check_login前，且一次运行仅一次）
+    _init_cookie_manager()
+
+    # 登录门（公网部署时拦截未授权访问，未配置用户则跳过）
+    check_login()
+
     # 尝试从数据库加载最新的分析记录（如果session中没有）
     if load_latest_analysis_from_db():
         st.success("✅ 已从历史记录恢复最近的分析结果")
@@ -998,6 +1100,25 @@ def main():
 
     # 侧边栏仅保留系统设置与参数
     with st.sidebar:
+        # 当前登录用户与登出（仅启用登录时显示）
+        current_user = st.session_state.get("login_username")
+        if current_user:
+            col_u, col_o = st.columns([2, 1])
+            with col_u:
+                st.caption(f"👤 {current_user}")
+            with col_o:
+                if st.button("登出", key="logout_btn"):
+                    # 清除cookie中的登录token，否则刷新会自动恢复登录
+                    try:
+                        cookie_manager = st.session_state.get("_cookie_mgr")
+                        if cookie_manager is not None:
+                            cookie_manager.delete(_AUTH_COOKIE_NAME, key="del_auth_cookie")
+                    except Exception:
+                        pass
+                    for _k in ("login_ok", "login_username"):
+                        st.session_state.pop(_k, None)
+                    st.rerun()
+
         st.markdown("### 🔧 系统设置")
         st.caption("顶部为功能入口，侧边栏保留运行参数与环境配置。")
 
@@ -1402,7 +1523,7 @@ def parse_stock_list(stock_input):
 
     return unique_list
 
-def analyze_single_stock_for_batch(symbol, period, enabled_analysts_config=None, selected_model='qwen3.5-plus'):
+def analyze_single_stock_for_batch(symbol, period, enabled_analysts_config=None, selected_model='qwen-plus'):
     """单个股票分析（用于批量分析）
 
     Args:
@@ -1512,7 +1633,7 @@ def run_batch_analysis(stock_list, period, batch_mode="顺序分析"):
         'sentiment': st.session_state.get('enable_sentiment', False),
         'news': st.session_state.get('enable_news', False)
     }
-    selected_model = st.session_state.get('selected_model', 'qwen3.5-plus')
+    selected_model = st.session_state.get('selected_model', 'qwen-plus')
 
     # 创建进度显示
     st.subheader(f"📊 批量分析进行中 ({batch_mode})")
@@ -1719,7 +1840,7 @@ def run_stock_analysis(symbol, period):
         # 6. 初始化AI分析系统
         status_text.text("🤖 正在初始化AI分析系统...")
         # 使用选择的模型
-        selected_model = st.session_state.get('selected_model', 'qwen3.5-plus')
+        selected_model = st.session_state.get('selected_model', 'qwen-plus')
 
         # 创建进度回调函数，用于实时更新前端状态
         def update_progress(message):

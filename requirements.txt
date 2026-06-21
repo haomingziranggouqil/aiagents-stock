@@ -17,4 +17,4 @@ pywencai>=0.7.0
 markdown-it-py>=4.0.0
 weasyprint>=67.0
 pyyaml>=6.0.0
-pyppeteer>=2.0.0
+pyppeteer>=2.0.0extra-streamlit-components==0.1.81

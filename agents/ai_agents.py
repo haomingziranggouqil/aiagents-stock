@@ -5,7 +5,7 @@ import time
 class StockAnalysisAgents:
     """股票分析AI智能体集合"""
 
-    def __init__(self, model="qwen3.5-plus", progress_callback: Optional[Callable[[str], None]] = None):
+    def __init__(self, model="qwen-plus", progress_callback: Optional[Callable[[str], None]] = None):
         self.model = model
         self.deepseek_client = DeepSeekClient(model=model)
         self.progress_callback = progress_callback
