@@ -85,14 +85,19 @@ def check_login():
     if st.session_state.get("login_ok"):
         return True
 
+    # 刚点过登出：本轮跳过cookie自动恢复，强制显示登录框
+    # （cookie删除是异步的，立刻读会读到旧token又被恢复，故用标记兜底）
+    just_logged_out = st.session_state.pop("just_logged_out", False)
+
     # 尝试用cookie中的token恢复登录（跨标签/刷新免登录）
-    token = cookie_manager.get(_AUTH_COOKIE_NAME)
-    if token:
-        username = session_token.verify_token(token)
-        if username and user_store.user_exists(username):
-            st.session_state.login_ok = True
-            st.session_state.login_username = username
-            return True
+    if not just_logged_out:
+        token = cookie_manager.get(_AUTH_COOKIE_NAME)
+        if token:
+            username = session_token.verify_token(token)
+            if username and user_store.user_exists(username):
+                st.session_state.login_ok = True
+                st.session_state.login_username = username
+                return True
 
     st.markdown("## 🔒 请登录")
     username = st.text_input("用户名", key="login_user")
@@ -216,9 +221,6 @@ def render_top_navigation():
     if 'active_view' not in st.session_state:
         st.session_state.active_view = 'show_home'
 
-    st.markdown("<div class='section-title'>🧭 顶部功能导航</div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-hint'>模块入口统一上移，支持快速切换智能分析、板块、龙虎榜与监测功能。</div>", unsafe_allow_html=True)
-
     nav_links = []
     for key, label, tooltip in TOP_NAV_ITEMS:
         state_class = "feature-tab-active" if st.session_state.active_view == key else "feature-tab-inactive"
@@ -226,9 +228,12 @@ def render_top_navigation():
             f'<a class="feature-tab {state_class}" href="?view={key}" title="{tooltip}">{label}</a>'
         )
 
+    # 标题+说明+导航条合并为一个markdown块，整块放入同一容器，便于整体sticky固定
     st.markdown(
         f"""
         <div class="feature-nav-shell">
+            <div class='section-title'>🧭 顶部功能导航</div>
+            <div class='section-hint'>模块入口统一上移，支持快速切换智能分析、板块、龙虎榜与监测功能。</div>
             <div class="feature-nav-track">
                 {''.join(nav_links)}
             </div>
@@ -724,11 +729,10 @@ st.markdown("""
     .block-container {
         padding-top: 1.6rem;
         padding-bottom: 2rem;
-        background: rgba(11, 18, 36, 0.78);
+        background: rgba(11, 18, 36, 0.94);
         border: 1px solid rgba(34, 211, 238, 0.18);
         border-radius: 18px;
         box-shadow: 0 18px 45px rgba(3, 8, 23, 0.6);
-        backdrop-filter: blur(8px);
         margin-top: 0.8rem;
     }
 
@@ -758,11 +762,19 @@ st.markdown("""
         margin-top: 0.45rem;
     }
 
+    /* 让包裹整块「顶部功能导航」的Streamlit最外层容器自身sticky固定在视口顶部 */
+    [data-testid="stElementContainer"]:has(.feature-nav-shell),
+    .element-container:has(.feature-nav-shell) {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 1200 !important;
+        background: var(--bg-surface);
+    }
+
     .feature-nav-shell {
-        position: sticky;
-        top: 0.45rem;
-        z-index: 1200;
-        margin-bottom: 0.65rem;
+        background: var(--bg-surface);
+        padding: 0.5rem 0 0.65rem 0;
+        margin-bottom: 0.4rem;
     }
 
     .feature-nav-track {
@@ -1117,6 +1129,11 @@ def main():
                         pass
                     for _k in ("login_ok", "login_username"):
                         st.session_state.pop(_k, None)
+                    # 标记刚登出：下一轮check_login跳过cookie自动恢复
+                    st.session_state.just_logged_out = True
+                    # 给前端删cookie留出时间再rerun
+                    import time as _t
+                    _t.sleep(0.5)
                     st.rerun()
 
         st.markdown("### 🔧 系统设置")
@@ -2096,50 +2113,41 @@ def display_stock_chart(stock_data, stock_info):
         st.plotly_chart(fig_volume, width='stretch', config={'responsive': True}, key=volume_key)
 
 def display_agents_analysis(agents_results):
-    """显示各分析师报告"""
-    st.subheader("🤖 AI分析师团队报告")
+    """显示各分析师报告（默认折叠，减少滚动距离）"""
+    with st.expander("🤖 AI分析师团队报告（点击展开）", expanded=False):
+        # 创建标签页
+        tab_names = []
+        tab_contents = []
 
-    # 创建标签页
-    tab_names = []
-    tab_contents = []
+        for agent_key, agent_result in agents_results.items():
+            agent_name = agent_result.get('agent_name', '未知分析师')
+            tab_names.append(agent_name)
+            tab_contents.append(agent_result)
 
-    for agent_key, agent_result in agents_results.items():
-        agent_name = agent_result.get('agent_name', '未知分析师')
-        tab_names.append(agent_name)
-        tab_contents.append(agent_result)
+        tabs = st.tabs(tab_names)
 
-    tabs = st.tabs(tab_names)
+        for i, tab in enumerate(tabs):
+            with tab:
+                agent_result = tab_contents[i]
 
-    for i, tab in enumerate(tabs):
-        with tab:
-            agent_result = tab_contents[i]
+                # 分析师信息
+                st.markdown(f"""
+                <div class="agent-card">
+                    <h4>👨‍💼 {agent_result.get('agent_name', '未知')}</h4>
+                    <p><strong>职责：</strong>{agent_result.get('agent_role', '未知')}</p>
+                    <p><strong>关注领域：</strong>{', '.join(agent_result.get('focus_areas', []))}</p>
+                    <p><strong>分析时间：</strong>{agent_result.get('timestamp', '未知')}</p>
+                </div>
+                """, unsafe_allow_html=True)
 
-            # 分析师信息
-            st.markdown(f"""
-            <div class="agent-card">
-                <h4>👨‍💼 {agent_result.get('agent_name', '未知')}</h4>
-                <p><strong>职责：</strong>{agent_result.get('agent_role', '未知')}</p>
-                <p><strong>关注领域：</strong>{', '.join(agent_result.get('focus_areas', []))}</p>
-                <p><strong>分析时间：</strong>{agent_result.get('timestamp', '未知')}</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-            # 分析报告
-            st.markdown("**📄 分析报告:**")
-            st.write(agent_result.get('analysis', '暂无分析'))
+                # 分析报告
+                st.markdown("**📄 分析报告:**")
+                st.write(agent_result.get('analysis', '暂无分析'))
 
 def display_team_discussion(discussion_result):
-    """显示团队讨论"""
-    st.subheader("🤝 分析团队讨论")
-
-    st.markdown("""
-    <div class="agent-card">
-        <h4>💭 团队综合讨论</h4>
-        <p>各位分析师正在就该股票进行深入讨论，整合不同维度的分析观点...</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.write(discussion_result)
+    """显示团队讨论（默认折叠，减少滚动距离）"""
+    with st.expander("🤝 分析团队讨论（点击展开）", expanded=False):
+        st.write(discussion_result)
 
 def display_final_decision(final_decision, stock_info, agents_results=None, discussion_result=None):
     """显示最终投资决策"""
@@ -2310,52 +2318,71 @@ def display_history_records():
         st.warning("🔍 未找到匹配的记录")
         return
 
-    # 显示记录列表
-    for record in filtered_records:
-        # 根据评级设置颜色和图标
-        rating = record.get('rating', '未知')
-        rating_color = {
-            "买入": "🟢",
-            "持有": "🟡",
-            "卖出": "🔴",
-            "强烈买入": "🟢",
-            "强烈卖出": "🔴"
-        }.get(rating, "⚪")
+    # 布局档位选择器（按钮切换，纯Streamlit稳定实现）
+    layout_options = {
+        "均衡 (列表︱详情)": (1, 2),
+        "对半": (1, 1),
+        "详情最大化": (0, 1),   # 0 表示收起列表
+        "列表最大化": (1, 0),   # 0 表示收起详情
+    }
+    chosen = st.segmented_control(
+        "布局",
+        options=list(layout_options.keys()),
+        default="均衡 (列表︱详情)",
+        key="hist_layout_mode",
+        label_visibility="collapsed",
+    )
+    ratio = layout_options.get(chosen or "均衡 (列表︱详情)", (1, 2))
 
-        with st.expander(f"{rating_color} {record['stock_name']} ({record['symbol']}) - {record['analysis_date']}"):
-            col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
+    def _render_list():
+        st.markdown("##### 📋 记录列表")
+        for record in filtered_records:
+            rating = record.get('rating', '未知')
+            rating_color = {
+                "买入": "🟢", "持有": "🟡", "卖出": "🔴",
+                "强烈买入": "🟢", "强烈卖出": "🔴",
+            }.get(rating, "⚪")
 
-            with col1:
+            with st.expander(f"{rating_color} {record['stock_name']} ({record['symbol']}) - {record['analysis_date']}"):
                 st.write(f"**股票代码:** {record['symbol']}")
                 st.write(f"**股票名称:** {record['stock_name']}")
-
-            with col2:
                 st.write(f"**分析时间:** {record['analysis_date']}")
                 st.write(f"**数据周期:** {record['period']}")
                 st.write(f"**投资评级:** **{rating}**")
 
-            with col3:
-                if st.button("👀 查看详情", key=f"view_{record['id']}"):
+                if st.button("👀 查看详情", key=f"view_{record['id']}", width='stretch'):
                     st.session_state.viewing_record_id = record['id']
-
-            with col4:
-                if st.button("➕ 监测", key=f"add_monitor_{record['id']}"):
+                    st.rerun()
+                if st.button("➕ 监测", key=f"add_monitor_{record['id']}", width='stretch'):
                     st.session_state.add_to_monitor_id = record['id']
                     st.session_state.viewing_record_id = record['id']
-
-            # 删除按钮（新增一行）
-            col5, _, _, _ = st.columns(4)
-            with col5:
-                if st.button("🗑️ 删除", key=f"delete_{record['id']}"):
+                    st.rerun()
+                if st.button("🗑️ 删除", key=f"delete_{record['id']}", width='stretch'):
                     if db.delete_record(record['id']):
+                        if st.session_state.get('viewing_record_id') == record['id']:
+                            st.session_state.pop('viewing_record_id', None)
                         st.success("✅ 记录已删除")
                         st.rerun()
                     else:
                         st.error("❌ 删除失败")
 
-    # 查看详细记录
-    if 'viewing_record_id' in st.session_state:
-        display_record_detail(st.session_state.viewing_record_id)
+    def _render_detail():
+        if 'viewing_record_id' in st.session_state:
+            display_record_detail(st.session_state.viewing_record_id)
+        else:
+            st.info("👈 点击左侧记录的「👀 查看详情」，分析详情将显示在这里")
+
+    # 根据档位渲染：某栏比例为0时收起该栏、另一栏独占全宽
+    if ratio[0] == 0:
+        _render_detail()
+    elif ratio[1] == 0:
+        _render_list()
+    else:
+        list_col, detail_col = st.columns(list(ratio))
+        with list_col:
+            _render_list()
+        with detail_col:
+            _render_detail()
 
 def display_add_to_monitor_dialog(record):
     """显示加入监测的对话框"""
@@ -2534,9 +2561,8 @@ def display_add_to_monitor_dialog(record):
             st.rerun()
 
 def display_record_detail(record_id):
-    """显示单条记录的详细信息"""
-    st.markdown("---")
-    st.subheader("📋 详细分析记录")
+    """显示单条记录的详细信息（渲染在历史页右侧栏）"""
+    st.markdown("##### 📋 分析详情")
 
     record = db.get_record_by_id(record_id)
     if not record:
@@ -2585,45 +2611,40 @@ def display_record_detail(record_id):
             else:
                 st.metric("市值", f"{market_cap}")
 
-    # 各分析师报告
-    st.subheader("🤖 AI分析师团队报告")
+    # 各分析师报告（默认折叠）
     agents_results = record['agents_results']
     if agents_results:
-        tab_names = []
-        tab_contents = []
+        with st.expander("🤖 AI分析师团队报告（点击展开）", expanded=False):
+            tab_names = []
+            tab_contents = []
 
-        for agent_key, agent_result in agents_results.items():
-            agent_name = agent_result.get('agent_name', '未知分析师')
-            tab_names.append(agent_name)
-            tab_contents.append(agent_result)
+            for agent_key, agent_result in agents_results.items():
+                agent_name = agent_result.get('agent_name', '未知分析师')
+                tab_names.append(agent_name)
+                tab_contents.append(agent_result)
 
-        tabs = st.tabs(tab_names)
+            tabs = st.tabs(tab_names)
 
-        for i, tab in enumerate(tabs):
-            with tab:
-                agent_result = tab_contents[i]
+            for i, tab in enumerate(tabs):
+                with tab:
+                    agent_result = tab_contents[i]
 
-                st.markdown(f"""
-                <div class="agent-card">
-                    <h4>👨‍💼 {agent_result.get('agent_name', '未知')}</h4>
-                    <p><strong>职责：</strong>{agent_result.get('agent_role', '未知')}</p>
-                    <p><strong>关注领域：</strong>{', '.join(agent_result.get('focus_areas', []))}</p>
-                </div>
-                """, unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div class="agent-card">
+                        <h4>👨‍💼 {agent_result.get('agent_name', '未知')}</h4>
+                        <p><strong>职责：</strong>{agent_result.get('agent_role', '未知')}</p>
+                        <p><strong>关注领域：</strong>{', '.join(agent_result.get('focus_areas', []))}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-                st.markdown("**📄 分析报告:**")
-                st.write(agent_result.get('analysis', '暂无分析'))
+                    st.markdown("**📄 分析报告:**")
+                    st.write(agent_result.get('analysis', '暂无分析'))
 
-    # 团队讨论
-    st.subheader("🤝 分析团队讨论")
+    # 团队讨论（默认折叠）
     discussion_result = record['discussion_result']
     if discussion_result:
-        st.markdown("""
-        <div class="agent-card">
-            <h4>💭 团队综合讨论</h4>
-        </div>
-        """, unsafe_allow_html=True)
-        st.write(discussion_result)
+        with st.expander("🤝 分析团队讨论（点击展开）", expanded=False):
+            st.write(discussion_result)
 
     # 最终决策
     st.subheader("📋 最终投资决策")
@@ -2693,9 +2714,9 @@ def display_record_detail(record_id):
                 st.session_state.add_to_monitor_id = record_id
                 st.rerun()
 
-    # 返回按钮
+    # 关闭详情按钮（左右布局下列表始终在左侧，无需"返回"）
     st.markdown("---")
-    if st.button("⬅️ 返回历史记录列表"):
+    if st.button("✖️ 关闭详情", width='stretch'):
         if 'viewing_record_id' in st.session_state:
             del st.session_state.viewing_record_id
         if 'add_to_monitor_id' in st.session_state:
